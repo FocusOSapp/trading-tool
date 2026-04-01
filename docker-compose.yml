@@ -1,0 +1,10 @@
+services:
+  trading-pro:
+    build: .
+    ports:
+      - "10000:10000"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
