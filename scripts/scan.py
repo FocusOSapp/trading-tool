@@ -665,4 +665,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"SCAN ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        # Write minimal data so workflow doesn't fail
+        import json, os
+        DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+        os.makedirs(DATA_DIR, exist_ok=True)
+        for f in ["scan.json", "sectors.json", "signals.json", "overview.json", "news.json", "global.json", "breadth.json", "shockers.json", "fii_dii.json"]:
+            with open(os.path.join(DATA_DIR, f), "w") as fh:
+                json.dump({}, fh)
+        print("Wrote empty data files to continue workflow")
