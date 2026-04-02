@@ -104,14 +104,19 @@ def scan_stocks():
                 if df is None or len(df) < 50: continue
                 scanned += 1
                 close = df["Close"]
+                high = df["High"]
+                low = df["Low"]
                 price = round(float(close.iloc[-1]), 2)
                 vol = df["Volume"].iloc[-1]
                 avg_vol = df["Volume"].tail(20).mean()
                 vr = round(vol / avg_vol, 2) if avg_vol > 0 else 1
 
-                # Simple indicators
+                # Indicators
                 ema20 = close.ewm(span=20).mean().iloc[-1]
                 ema50 = close.ewm(span=50).mean().iloc[-1]
+                ema200 = close.ewm(span=200).mean().iloc[-1] if len(close) >= 200 else ema50
+
+                # RSI
                 rsi_val = 50
                 if len(close) >= 14:
                     delta = close.diff()
@@ -119,41 +124,77 @@ def scan_stocks():
                     loss = (-delta.where(delta < 0, 0)).rolling(14).mean().iloc[-1]
                     if loss > 0: rsi_val = round(100 - (100 / (1 + gain/loss)), 1)
 
-                above_ema20 = price > ema20
-                above_ema50 = price > ema50
-                bullish = ema20 > ema50
+                # Day change
+                day_ch = ((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) * 100 if len(close) >= 2 else 0
 
-                # Score
-                s = 0
-                if above_ema20: s += 0.5
-                if above_ema50: s += 0.5
-                if bullish: s += 0.5
-                if vr > 1.5: s += 1.0
-                elif vr > 1.2: s += 0.5
-                if 55 <= rsi_val <= 70: s += 0.8
-                if rsi_val > 70: s += 0.3
+                # Support/Resistance (simple)
+                recent_high = round(float(high.tail(20).max()), 2)
+                recent_low = round(float(low.tail(20).min()), 2)
 
-                conf = min(int(s * 2), 10)
-                if conf < 7: continue
+                # === BUY SIGNAL LOGIC ===
+                buy_score = 0
+                if price > ema20: buy_score += 1.0
+                if price > ema50: buy_score += 1.0
+                if ema20 > ema50: buy_score += 1.0
+                if vr > 1.5: buy_score += 1.0
+                elif vr > 1.0: buy_score += 0.5
+                if 55 <= rsi_val <= 70: buy_score += 1.0
+                elif 50 <= rsi_val < 55: buy_score += 0.5
+                if day_ch > 0: buy_score += 0.5
+                if day_ch > 2: buy_score += 0.5
 
-                sl = round(price * 0.96, 2)
-                t1 = round(price * 1.04, 2)
-                t2 = round(price * 1.08, 2)
-                risk = price - sl
-                reward = t1 - price
-                rr = round(reward / risk, 1) if risk > 0 else 1.0
+                # === SELL SIGNAL LOGIC ===
+                sell_score = 0
+                if price < ema20: sell_score += 1.0
+                if price < ema50: sell_score += 1.0
+                if ema20 < ema50: sell_score += 1.0
+                if vr > 1.5: sell_score += 1.0
+                elif vr > 1.0: sell_score += 0.5
+                if rsi_val < 45: sell_score += 1.0
+                elif rsi_val < 50: sell_score += 0.5
+                if day_ch < 0: sell_score += 0.5
+                if day_ch < -2: sell_score += 0.5
 
-                signals.append({
-                    "stock": sym.replace(".NS", ""), "symbol": sym, "signal": "BUY",
-                    "confidence": conf, "entry": str(round(price * 1.005, 2)),
-                    "stop_loss": str(sl), "targets": [t1, t2],
-                    "risk_reward": f"1:{rr}", "current_price": price,
-                    "reason": f"Price {'above' if above_ema20 else 'below'} EMA20 | Vol {vr}x | RSI {rsi_val}",
-                    "sector": "Unknown", "structure_score": round(s * 0.6, 1),
-                    "volume_score": round(min(vr * 0.8, 3), 1),
-                    "indicator_score": round(1.5 if bullish else 0.8, 1),
-                    "sentiment_score": 1.0, "timestamp": datetime.utcnow().isoformat()
-                })
+                # Pick the stronger signal
+                buy_conf = min(int(buy_score * 1.4), 10)
+                sell_conf = min(int(sell_score * 1.4), 10)
+
+                if buy_conf >= 6 and buy_conf >= sell_conf:
+                    sl = round(price * 0.96, 2)
+                    t1 = round(price * 1.04, 2)
+                    t2 = round(price * 1.08, 2)
+                    risk = price - sl
+                    reward = t1 - price
+                    rr = round(reward / risk, 1) if risk > 0 else 1.0
+                    signals.append({
+                        "stock": sym.replace(".NS", ""), "symbol": sym, "signal": "BUY",
+                        "confidence": buy_conf, "entry": str(round(price * 1.005, 2)),
+                        "stop_loss": str(sl), "targets": [t1, t2],
+                        "risk_reward": f"1:{rr}", "current_price": price,
+                        "reason": f"Above EMA20/50 | Vol {vr}x | RSI {rsi_val} | Day +{day_ch:.1f}%",
+                        "sector": "Unknown", "structure_score": round(buy_score * 0.6, 1),
+                        "volume_score": round(min(vr * 0.8, 3), 1),
+                        "indicator_score": round(1.5 if ema20 > ema50 else 0.8, 1),
+                        "sentiment_score": 1.0, "timestamp": datetime.utcnow().isoformat()
+                    })
+                elif sell_conf >= 7:
+                    sl = round(price * 1.04, 2)
+                    t1 = round(price * 0.96, 2)
+                    t2 = round(price * 0.92, 2)
+                    risk = sl - price
+                    reward = price - t1
+                    rr = round(reward / risk, 1) if risk > 0 else 1.0
+                    signals.append({
+                        "stock": sym.replace(".NS", ""), "symbol": sym, "signal": "SELL",
+                        "confidence": sell_conf, "entry": str(round(price * 0.995, 2)),
+                        "stop_loss": str(sl), "targets": [t1, t2],
+                        "risk_reward": f"1:{rr}", "current_price": price,
+                        "reason": f"Below EMA20/50 | Vol {vr}x | RSI {rsi_val} | Day {day_ch:.1f}%",
+                        "sector": "Unknown", "structure_score": round(sell_score * 0.6, 1),
+                        "volume_score": round(min(vr * 0.8, 3), 1),
+                        "indicator_score": round(1.5 if ema20 < ema50 else 0.8, 1),
+                        "sentiment_score": 1.0, "timestamp": datetime.utcnow().isoformat()
+                    })
             except Exception as e:
                 print(f"  Skip {sym}: {e}")
                 continue
