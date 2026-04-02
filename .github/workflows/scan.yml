@@ -87,8 +87,19 @@ jobs:
           npm ci || npm install
 
       - name: Build
+        env:
+          REACT_APP_TWELVE_DATA_KEY: ${{ secrets.TWELVE_DATA_KEY }}
+          REACT_APP_FINNHUB_KEY: ${{ secrets.FINNHUB_KEY }}
+          REACT_APP_ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
+          REACT_APP_NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          REACT_APP_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
           cd frontend
+          echo "REACT_APP_TWELVE_DATA_KEY=${{ secrets.TWELVE_DATA_KEY }}" >> .env
+          echo "REACT_APP_FINNHUB_KEY=${{ secrets.FINNHUB_KEY }}" >> .env
+          echo "REACT_APP_ALPHA_VANTAGE_KEY=${{ secrets.ALPHA_VANTAGE_KEY }}" >> .env
+          echo "REACT_APP_NEWS_API_KEY=${{ secrets.NEWS_API_KEY }}" >> .env
+          echo "REACT_APP_GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
           REACT_APP_API_URL='' npm run build
 
       - name: Deploy to GitHub Pages
