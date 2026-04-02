@@ -13,6 +13,7 @@ import {
   BookmarkPlus, Trash2, Edit3, Calculator,
 } from 'lucide-react';
 import ChartAnalyzer from './components/ChartAnalyzer';
+import TradeJournal from './components/TradeJournal';
 
 const DATA_BASE = process.env.REACT_APP_DATA_URL || '';
 
@@ -169,7 +170,6 @@ export default function App() {
   const [toasts, setToasts] = useState([]);
   const [watchlist, setWatchlist] = useLocalStorage('watchlist', []);
   const [portfolio, setPortfolio] = useLocalStorage('portfolio', []);
-  const [journal, setJournal] = useLocalStorage('journal', []);
   const [showTicker, setShowTicker] = useState(true);
 
   const market = useMarketData();
@@ -199,16 +199,6 @@ export default function App() {
       addToast(`Added ${signal.stock} to portfolio`, 'success');
     }
   }, [portfolio, setPortfolio, addToast]);
-
-  const addJournalEntry = useCallback((signal, action) => {
-    setJournal(prev => [...prev, {
-      id: Date.now(), symbol: signal.symbol, name: signal.stock,
-      action, price: parseFloat(signal.entry),
-      confidence: signal.confidence, reason: signal.reason,
-      timestamp: new Date().toISOString(),
-    }]);
-    addToast(`Logged ${action} for ${signal.stock}`, 'info');
-  }, [setJournal, addToast]);
 
   const views = [
     { id: 'dashboard', label: 'Terminal', icon: Activity },
@@ -247,7 +237,7 @@ export default function App() {
           <main style={{ flex: 1, overflow: 'auto', padding: 20 }}>
             {activeView === 'dashboard' && <DashboardView market={market} T={T} onSignalClick={setSelectedSignal} onWatch={watchSignal} onPortfolio={addToPortfolio} />}
             {activeView === 'heatmap' && <HeatmapView sectors={market.sectors} signals={market.signals} T={T} />}
-            {activeView === 'signals' && <SignalsView signals={market.signals} T={T} onSignalClick={setSelectedSignal} onWatch={watchSignal} onPortfolio={addToPortfolio} onJournal={addJournalEntry} />}
+            {activeView === 'signals' && <SignalsView signals={market.signals} T={T} onSignalClick={setSelectedSignal} onWatch={watchSignal} onPortfolio={addToPortfolio} />}
             {activeView === 'charts' && <ChartsView signals={market.signals} T={T} />}
             {activeView === 'analyzer' && <ChartAnalyzer T={T} signals={market.signals} />}
             {activeView === 'global' && <GlobalView global={market.global} currencies={market.currencies} T={T} />}
@@ -256,14 +246,14 @@ export default function App() {
             {activeView === 'portfolio' && <PortfolioView portfolio={portfolio} setPortfolio={setPortfolio} signals={market.signals} T={T} />}
             {activeView === 'breadth' && <BreadthView breadth={market.breadth} fiiDii={market.fiiDii} sectors={market.sectors} T={T} />}
             {activeView === 'shockers' && <ShockersView shockers={market.shockers} T={T} onSignalClick={setSelectedSignal} />}
-            {activeView === 'journal' && <JournalView journal={journal} setJournal={setJournal} T={T} />}
+            {activeView === 'journal' && <TradeJournal T={T} signals={market.signals} />}
             {activeView === 'news' && <NewsView news={market.news} T={T} />}
             {activeView === 'calculator' && <RiskCalculatorView T={T} />}
           </main>
         </div>
       </div>
 
-      {selectedSignal && <SignalModal signal={selectedSignal} onClose={() => setSelectedSignal(null)} T={T} onWatch={watchSignal} onPortfolio={addToPortfolio} onJournal={addJournalEntry} />}
+      {selectedSignal && <SignalModal signal={selectedSignal} onClose={() => setSelectedSignal(null)} T={T} onWatch={watchSignal} onPortfolio={addToPortfolio} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} theme={theme} setTheme={setTheme} T={T} />}
       <ToastContainer toasts={toasts} T={T} />
     </div>
@@ -885,30 +875,6 @@ function PortfolioView({ portfolio, setPortfolio, signals, T }) {
   );
 }
 
-function JournalView({ journal, setJournal, T }) {
-  return (
-    <div className="fade-in">
-      {journal.length === 0 ? <EmptyState icon={FileText} text="No journal entries. Log trades from signals." T={T} /> :
-        <div style={{ display: 'grid', gap: 8 }}>
-          {journal.map((entry, i) => (
-            <div key={i} style={{ padding: 16, borderRadius: 10, background: T.bg3, border: `1px solid ${T.border}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <SignalBadge signal={entry.action} T={T} />
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{entry.name}</span>
-                  <span style={{ fontSize: 10, color: T.text4 }}>Conf: {entry.confidence}</span>
-                </div>
-                <span style={{ fontSize: 10, color: T.text4 }}>{new Date(entry.timestamp).toLocaleString()}</span>
-              </div>
-              <p style={{ fontSize: 11, color: T.text3, lineHeight: 1.5 }}>{entry.reason}</p>
-            </div>
-          ))}
-        </div>
-      }
-    </div>
-  );
-}
-
 function NewsView({ news, T }) {
   const [filter, setFilter] = useState('all');
   const categories = ['all', ...new Set(news.map(n => n.category).filter(Boolean))];
@@ -1209,7 +1175,7 @@ function RiskCalculatorView({ T }) {
 }
 
 // ==================== MODALS ====================
-function SignalModal({ signal, onClose, T, onWatch, onPortfolio, onJournal }) {
+function SignalModal({ signal, onClose, T, onWatch, onPortfolio }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div onClick={e => e.stopPropagation()} className="scale-in" style={{ background: T.bg3, borderRadius: 16, border: `1px solid ${T.border}`, width: 520, maxHeight: '85vh', overflow: 'auto' }}>
@@ -1274,9 +1240,6 @@ function SignalModal({ signal, onClose, T, onWatch, onPortfolio, onJournal }) {
               onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.text2; }}><Star size={14} /> Watchlist</button>
             <button onClick={() => { onPortfolio(signal); onClose(); }} style={{ flex: 1, padding: '10px 16px', borderRadius: 10, border: 'none', background: T.green, color: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s' }}
               onMouseEnter={e => e.currentTarget.style.opacity = '0.9'} onMouseLeave={e => e.currentTarget.style.opacity = '1'}><Plus size={14} /> Add Trade</button>
-            <button onClick={() => { onJournal(signal, signal.signal); onClose(); }} style={{ flex: 1, padding: '10px 16px', borderRadius: 10, border: `1px solid ${T.border}`, background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, transition: 'all 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = T.accent; e.currentTarget.style.color = T.accent; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.text2; }}><FileText size={14} /> Journal</button>
           </div>
         </div>
       </div>
