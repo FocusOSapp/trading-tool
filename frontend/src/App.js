@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Activity, BarChart3, TrendingUp, Zap, Layers, Search, RefreshCw, ArrowUpRight, ArrowDownRight, Clock, Target, Shield, Eye, XCircle, Newspaper, Users, DollarSign } from 'lucide-react';
 
-const API_BASE = process.env.REACT_APP_API_URL || '';
+const DATA_BASE = process.env.REACT_APP_DATA_URL || '';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sectors, setSectors] = useState([]);
   const [signals, setSignals] = useState([]);
-  const [status, setStatus] = useState(null);
+  const [status, setStatus] = useState({ total_scans: 0, last_scan: null });
   const [scanning, setScanning] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [selectedSignal, setSelectedSignal] = useState(null);
@@ -20,14 +20,19 @@ export default function App() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [statusRes, sectorsRes, signalsRes, overviewRes, newsRes] = await Promise.all([
-        fetch(`${API_BASE}/api/status`).then(r => r.json()),
-        fetch(`${API_BASE}/api/sectors`).then(r => r.json()),
-        fetch(`${API_BASE}/api/signals/recent?limit=20`).then(r => r.json()),
-        fetch(`${API_BASE}/api/market/overview`).then(r => r.json()),
-        fetch(`${API_BASE}/api/news`).then(r => r.json()),
+      const [scanRes, sectorsRes, signalsRes, overviewRes, newsRes] = await Promise.all([
+        fetch(`${DATA_BASE}/data/scan.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/sectors.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/signals.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/overview.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/news.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
       ]);
-      if (statusRes) setStatus(statusRes);
+      if (scanRes) {
+        setStatus({ total_scans: scanRes.stocks_scanned || 0, last_scan: scanRes.timestamp });
+        if (scanRes.signals) setSignals(scanRes.signals);
+        if (scanRes.top_sectors) setSectors(scanRes.top_sectors);
+        if (scanRes.market_overview) setMarketOverview(scanRes.market_overview);
+      }
       if (sectorsRes) setSectors(sectorsRes.sectors || []);
       if (signalsRes) setSignals(signalsRes.signals || []);
       if (overviewRes) setMarketOverview(overviewRes);
@@ -36,54 +41,24 @@ export default function App() {
     } catch (e) { console.error('Fetch error:', e); }
   }, []);
 
-  const fetchMarketData = useCallback(async () => {
-    try {
-      const [gainersRes, losersRes, fiiRes] = await Promise.all([
-        fetch(`${API_BASE}/api/market/gainers`).then(r => r.json()),
-        fetch(`${API_BASE}/api/market/losers`).then(r => r.json()),
-        fetch(`${API_BASE}/api/market/fii-dii`).then(r => r.json()),
-      ]);
-      if (gainersRes) setGainers(gainersRes.gainers || []);
-      if (losersRes) setLosers(losersRes.losers || []);
-      if (fiiRes) setFiiDii(fiiRes);
-    } catch (e) { console.error('Market data error:', e); }
-  }, []);
-
   const triggerScan = async () => {
     setScanning(true);
+    // Trigger GitHub Actions workflow via repository dispatch
     try {
-      const result = await fetch(`${API_BASE}/api/scan/trigger`, { method: 'POST' }).then(r => r.json());
-      if (result) {
-        setSignals(result.signals || []);
-        setSectors(result.top_sectors || []);
-        if (result.market_overview) setMarketOverview(result.market_overview);
-        setLastUpdate(new Date());
-      }
-    } catch (e) { console.error('Scan error:', e); }
-    setScanning(false);
+      await fetch('https://api.github.com/repos/FocusOSapp/trading-tool/dispatches', {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'Authorization': `token ${process.env.REACT_APP_GITHUB_TOKEN || ''}`,
+        },
+        body: JSON.stringify({ event_type: 'manual_scan' }),
+      });
+    } catch (e) { console.log('Manual trigger unavailable'); }
+    // Refresh data after delay (GitHub Actions takes ~2 min to complete)
+    setTimeout(() => { fetchData(); setScanning(false); }, 120000);
   };
 
-  // WebSocket connection
-  useEffect(() => {
-    const wsUrl = API_BASE.replace('http', 'ws').replace('https', 'wss');
-    const ws = new WebSocket(`${wsUrl}/ws`);
-    ws.onopen = () => setWsConnected(true);
-    ws.onclose = () => setWsConnected(false);
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'scan_complete') {
-          setSignals(data.data.signals || []);
-          setSectors(data.data.top_sectors || []);
-          setLastUpdate(new Date());
-          setScanning(false);
-        }
-      } catch (e) {}
-    };
-    return () => ws.close();
-  }, []);
-
-  useEffect(() => { fetchData(); fetchMarketData(); const i = setInterval(fetchData, 30000); return () => clearInterval(i); }, [fetchData, fetchMarketData]);
+  useEffect(() => { fetchData(); const i = setInterval(fetchData, 60000); return () => clearInterval(i); }, [fetchData]);
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: Activity },
@@ -433,8 +408,14 @@ function AnalyzerView() {
     if (!symbol.trim()) return;
     setLoading(true);
     try {
-      const data = await fetch(`${API_BASE}/api/stock/${symbol.trim().toUpperCase()}`).then(r => r.json());
-      setResult(data);
+      // For static deployment, we show a message that analysis requires server
+      setResult({
+        name: symbol.toUpperCase(),
+        symbol: symbol.toUpperCase() + '.NS',
+        indicators: null,
+        signal: null,
+        message: 'Stock analysis requires live data. Run the scanner via GitHub Actions or use the local backend.'
+      });
     } catch (e) { console.error(e); }
     setLoading(false);
   };
