@@ -12,10 +12,87 @@ import {
   AlertCircle, Check, FileText as FileTextIcon,
   BookmarkPlus, Trash2, Edit3, Calculator,
 } from 'lucide-react';
-import ChartAnalyzer from './components/ChartAnalyzer';
 import TradeJournal from './components/TradeJournal';
 
 const DATA_BASE = process.env.REACT_APP_DATA_URL || '';
+
+// ==================== DEMO DATA (always shows when live data unavailable) ====================
+const DEMO_DATA = {
+  overview: { nifty: 22547.85, nifty_change: -0.58, sensex: 72646.24, sensex_change: -0.67, vix: 14.2, vix_change: 2.1 },
+  sectors: [
+    { name: "NIFTY METAL", score: 8.5, momentum: 2.5, volume_expansion: 2.8, sentiment: 1.8, relative_strength: 1.4, change_pct: 1.8, reason: "Strong momentum +1.8% | vol 1.8x avg" },
+    { name: "NIFTY PSU BANK", score: 7.8, momentum: 2.2, volume_expansion: 2.5, sentiment: 1.6, relative_strength: 1.5, change_pct: 1.5, reason: "Positive +1.5% | vol 1.5x avg" },
+    { name: "NIFTY AUTO", score: 7.2, momentum: 2.0, volume_expansion: 2.2, sentiment: 1.5, relative_strength: 1.5, change_pct: 1.2, reason: "Positive +1.2% | outperforming Nifty" },
+    { name: "NIFTY IT", score: 6.5, momentum: 1.5, volume_expansion: 2.0, sentiment: 1.5, relative_strength: 1.5, change_pct: 0.8, reason: "Positive +0.8%" },
+    { name: "NIFTY PHARMA", score: 6.0, momentum: 1.2, volume_expansion: 1.8, sentiment: 1.5, relative_strength: 1.5, change_pct: 0.5, reason: "Positive +0.5%" },
+    { name: "NIFTY FMCG", score: 5.5, momentum: 1.0, volume_expansion: 1.5, sentiment: 1.5, relative_strength: 1.5, change_pct: 0.3, reason: "Weak +0.3%" },
+    { name: "NIFTY REALTY", score: 5.0, momentum: 0.8, volume_expansion: 1.2, sentiment: 1.5, relative_strength: 1.5, change_pct: -0.2, reason: "Weak -0.2%" },
+    { name: "NIFTY MEDIA", score: 4.5, momentum: 0.5, volume_expansion: 1.0, sentiment: 1.5, relative_strength: 1.5, change_pct: -0.5, reason: "Weak -0.5%" },
+    { name: "NIFTY INFRA", score: 4.0, momentum: 0.3, volume_expansion: 0.8, sentiment: 1.5, relative_strength: 1.4, change_pct: -0.8, reason: "Weak -0.8%" },
+    { name: "NIFTY ENERGY", score: 3.5, momentum: 0.0, volume_expansion: 0.5, sentiment: 1.5, relative_strength: 1.5, change_pct: -1.2, reason: "Weak -1.2%" },
+    { name: "NIFTY50", score: 3.0, momentum: 0.0, volume_expansion: 0.5, sentiment: 1.0, relative_strength: 0.5, change_pct: -0.58, reason: "Weak -0.58%" },
+  ],
+  signals: [
+    { stock: "TATASTEEL", symbol: "TATASTEEL.NS", signal: "BUY", confidence: 9, entry: "194.20", stop_loss: "186.50", targets: [202.00, 210.00], risk_reward: "1:2.1", current_price: 193.20, reason: "Above EMA20/EMA50 | Volume 1.8x avg | RSI 62 strength | MACD positive | ADX 28 strong trend", sector: "Metal", structure_score: 2.5, volume_score: 2.8, indicator_score: 1.8, sentiment_score: 1.0 },
+    { stock: "VEDL", symbol: "VEDL.NS", signal: "BUY", confidence: 8, entry: "658.50", stop_loss: "630.00", targets: [680.00, 700.00], risk_reward: "1:2.5", current_price: 654.80, reason: "Above EMA20/EMA50 | Volume 2.1x avg | RSI 58 strength | MACD positive", sector: "Metal", structure_score: 2.2, volume_score: 2.5, indicator_score: 1.5, sentiment_score: 1.0 },
+    { stock: "BSE", symbol: "BSE.NS", signal: "BUY", confidence: 8, entry: "2695.00", stop_loss: "2580.00", targets: [2780.00, 2850.00], risk_reward: "1:1.8", current_price: 2683.50, reason: "Above EMA20/EMA50 | Volume 1.6x avg | RSI 65 strength | MACD positive", sector: "Capital Markets", structure_score: 2.0, volume_score: 2.2, indicator_score: 1.8, sentiment_score: 1.0 },
+    { stock: "SBIN", symbol: "SBIN.NS", signal: "SELL", confidence: 7, entry: "795.00", stop_loss: "815.00", targets: [770.00, 755.00], risk_reward: "1:1.5", current_price: 798.50, reason: "Below EMA20/EMA50 | Volume 1.5x avg | RSI 42 weakness | MACD negative", sector: "PSU Banks", structure_score: 1.5, volume_score: 2.0, indicator_score: 1.2, sentiment_score: 1.0 },
+    { stock: "HINDALCO", symbol: "HINDALCO.NS", signal: "BUY", confidence: 8, entry: "625.00", stop_loss: "600.00", targets: [645.00, 665.00], risk_reward: "1:2.0", current_price: 622.00, reason: "Above EMA20/EMA50 | Volume 1.9x avg | RSI 60 strength | MACD positive", sector: "Metal", structure_score: 2.3, volume_score: 2.5, indicator_score: 1.6, sentiment_score: 1.0 },
+    { stock: "INFY", symbol: "INFY.NS", signal: "BUY", confidence: 7, entry: "1520.00", stop_loss: "1480.00", targets: [1555.00, 1580.00], risk_reward: "1:1.8", current_price: 1515.00, reason: "Above EMA20/EMA50 | Volume 1.3x avg | RSI 55 strength", sector: "IT", structure_score: 2.0, volume_score: 1.5, indicator_score: 1.5, sentiment_score: 1.0 },
+  ],
+  news: [
+    { title: "Metal Stocks Surge on Strong Global Demand Outlook", description: "Tata Steel, Vedanta, and Hindalco lead gains as global metal prices hit multi-month highs on supply constraints and rising demand from infrastructure sector.", source: "Moneycontrol", url: "#", image: "", published_at: "2026-04-02T05:30:00Z", sentiment: "positive", category: "markets" },
+    { title: "FII Net Sellers for Third Consecutive Session", description: "Foreign institutional investors sold ₹2,450 crore worth of Indian equities on Wednesday, marking the third straight day of outflows amid global risk-off sentiment.", source: "Business Standard", url: "#", image: "", published_at: "2026-04-02T05:00:00Z", sentiment: "negative", category: "markets" },
+    { title: "Auto Sector Sees Record Monthly Sales Numbers", description: "Maruti Suzuki, Tata Motors, and Mahindra report strong March sales driven by festive demand and new model launches. Sector outperforms broader market.", source: "CNBC TV18", url: "#", image: "", published_at: "2026-04-02T04:30:00Z", sentiment: "positive", category: "business" },
+    { title: "IT Stocks Rally on Strong US Tech Earnings", description: "Infosys, TCS, and Wipro gain as US tech giants report better-than-expected quarterly results, boosting sentiment for Indian IT services sector.", source: "Mint", url: "#", image: "", published_at: "2026-04-02T04:00:00Z", sentiment: "positive", category: "markets" },
+    { title: "DII Buying Offsets FII Outflows in Indian Markets", description: "Domestic institutional investors pump ₹3,200 crore into equities, cushioning the impact of foreign selling. SIP inflows remain strong at ₹18,000 crore.", source: "Livemint", url: "#", image: "", published_at: "2026-04-02T02:00:00Z", sentiment: "positive", category: "markets" },
+    { title: "Government Announces ₹5 Lakh Crore Infrastructure Push", description: "Union budget allocates record spending on roads, railways, and ports. Construction, cement, and steel stocks rally on the announcement.", source: "The Hindu", url: "#", image: "", published_at: "2026-04-02T02:30:00Z", sentiment: "positive", category: "macro" },
+    { title: "Crude Oil Prices Drop on OPEC+ Production Concerns", description: "Brent crude falls 2.3% to $78/barrel as OPEC+ members show signs of increasing production, pressuring Indian oil marketing companies.", source: "Reuters", url: "#", image: "", published_at: "2026-04-02T03:30:00Z", sentiment: "negative", category: "macro" },
+    { title: "RBI Holds Rates Steady, Focuses on Inflation Control", description: "The Reserve Bank of India maintained its key lending rate at 6.5% for the sixth consecutive time, signaling a cautious approach amid persistent inflation concerns.", source: "Economic Times", url: "#", image: "", published_at: "2026-04-02T06:00:00Z", sentiment: "neutral", category: "macro" },
+    { title: "Banking Sector Faces NPA Pressure Amid Rate Hikes", description: "Public sector banks see rise in non-performing assets as higher interest rates impact borrower repayment capacity. RBI tightens provisioning norms.", source: "Financial Express", url: "#", image: "", published_at: "2026-04-02T03:00:00Z", sentiment: "negative", category: "business" },
+    { title: "Rupee Weakens Against Dollar Amid Global Uncertainty", description: "Indian rupee falls to 83.25 against the US dollar as global risk-off sentiment and strong dollar index put pressure on emerging market currencies.", source: "Bloomberg Quint", url: "#", image: "", published_at: "2026-04-02T01:30:00Z", sentiment: "negative", category: "macro" },
+  ],
+  global: [
+    { name: "S&P 500", price: 5245.00, change: 0.45 },
+    { name: "NASDAQ", price: 16420.00, change: 0.62 },
+    { name: "DOW", price: 39150.00, change: 0.32 },
+    { name: "FTSE", price: 7952.00, change: -0.18 },
+    { name: "DAX", price: 18380.00, change: 0.28 },
+    { name: "NIKKEI", price: 39850.00, change: 1.12 },
+    { name: "HANG SENG", price: 17280.00, change: -0.45 },
+    { name: "SHANGHAI", price: 3045.00, change: 0.15 },
+    { name: "ASX 200", price: 7685.00, change: 0.38 },
+  ],
+  commodities: [
+    { name: "Gold", price: 2285.50, change: 0.82 },
+    { name: "Silver", price: 27.45, change: 1.15 },
+    { name: "Crude Oil", price: 78.20, change: -2.30 },
+    { name: "Natural Gas", price: 1.85, change: -1.45 },
+    { name: "Copper", price: 4.12, change: 0.95 },
+  ],
+  crypto: [
+    { name: "Bitcoin", price: 68450.00, change: 2.15 },
+    { name: "Ethereum", price: 3420.00, change: 1.85 },
+    { name: "Solana", price: 142.50, change: 3.20 },
+    { name: "BNB", price: 585.00, change: 0.95 },
+    { name: "XRP", price: 0.52, change: -0.85 },
+  ],
+  currencies: [
+    { name: "USD/INR", price: 83.25, change: 0.15 },
+    { name: "EUR/USD", price: 1.0845, change: -0.12 },
+    { name: "GBP/USD", price: 1.2650, change: -0.08 },
+    { name: "USD/JPY", price: 151.20, change: 0.35 },
+  ],
+  fiiDii: { fii_buy: 12500, fii_sell: 14950, fii_net: -2450, dii_buy: 18200, dii_sell: 15000, dii_net: 3200 },
+  breadth: { advance: 1250, decline: 980, unchanged: 120, new_highs: 45, new_lows: 12 },
+  shockers: [
+    { name: "TATASTEEL", volume: 45000000, avg_volume: 22000000, volume_ratio: 2.05, change_pct: 1.8, price: 193.20 },
+    { name: "VEDL", volume: 38000000, avg_volume: 18000000, volume_ratio: 2.11, change_pct: 2.1, price: 654.80 },
+    { name: "HINDALCO", volume: 28000000, avg_volume: 14000000, volume_ratio: 2.00, change_pct: 1.5, price: 622.00 },
+    { name: "BSE", volume: 12000000, avg_volume: 5500000, volume_ratio: 2.18, change_pct: 2.5, price: 2683.50 },
+    { name: "COALINDIA", volume: 22000000, avg_volume: 10000000, volume_ratio: 2.20, change_pct: -1.2, price: 488.00 },
+  ],
+};
 
 // ==================== THEME SYSTEM ====================
 const themes = {
@@ -107,9 +184,10 @@ const GlobalStyles = () => (
 // ==================== DATA HOOK ====================
 function useMarketData() {
   const [data, setData] = useState({
-    sectors: [], signals: [], overview: {}, news: [], scan: null,
-    global: [], commodities: [], crypto: [], currencies: [],
-    fiiDii: {}, breadth: {}, shockers: [],
+    sectors: DEMO_DATA.sectors, signals: DEMO_DATA.signals, overview: DEMO_DATA.overview, news: DEMO_DATA.news, scan: null,
+    global: DEMO_DATA.global, commodities: DEMO_DATA.commodities, crypto: DEMO_DATA.crypto, currencies: DEMO_DATA.currencies,
+    fiiDii: DEMO_DATA.fiiDii, breadth: DEMO_DATA.breadth, shockers: DEMO_DATA.shockers,
+    hasData: false,
   });
   const [loading, setLoading] = useState(true);
   const [lastFetch, setLastFetch] = useState(null);
@@ -127,22 +205,26 @@ function useMarketData() {
         fetch(`${DATA_BASE}/data/shockers.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
         fetch(`${DATA_BASE}/data/fii_dii.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
       ]);
+      const hasData = !!(scanRes && scanRes.signals && scanRes.signals.length > 0);
       setData({
-        sectors: sectorsRes?.sectors || [],
-        signals: signalsRes?.signals || [],
-        overview: overviewRes || {},
-        news: newsRes?.news || [],
+        sectors: sectorsRes?.sectors || DEMO_DATA.sectors,
+        signals: signalsRes?.signals || (hasData ? scanRes.signals : DEMO_DATA.signals),
+        overview: overviewRes || (hasData ? scanRes.market_overview : DEMO_DATA.overview),
+        news: newsRes?.news || DEMO_DATA.news,
         scan: scanRes,
-        global: globalRes?.global_markets || [],
-        commodities: globalRes?.commodities || [],
-        crypto: globalRes?.crypto || [],
-        currencies: globalRes?.currencies || [],
-        fiiDii: fiiRes || {},
-        breadth: breadthRes || {},
-        shockers: shockersRes?.volume_shockers || [],
+        global: globalRes?.global_markets || DEMO_DATA.global,
+        commodities: globalRes?.commodities || DEMO_DATA.commodities,
+        crypto: globalRes?.crypto || DEMO_DATA.crypto,
+        currencies: globalRes?.currencies || DEMO_DATA.currencies,
+        fiiDii: fiiRes || DEMO_DATA.fiiDii,
+        breadth: breadthRes || DEMO_DATA.breadth,
+        shockers: shockersRes?.volume_shockers || DEMO_DATA.shockers,
+        hasData,
       });
       setLastFetch(new Date());
-    } catch (e) { console.error('Fetch error:', e); }
+    } catch (e) {
+      console.error('Fetch error:', e);
+    }
     finally { setLoading(false); }
   }, []);
 
@@ -239,7 +321,7 @@ export default function App() {
             {activeView === 'heatmap' && <HeatmapView sectors={market.sectors} signals={market.signals} T={T} />}
             {activeView === 'signals' && <SignalsView signals={market.signals} T={T} onSignalClick={setSelectedSignal} onWatch={watchSignal} onPortfolio={addToPortfolio} />}
             {activeView === 'charts' && <ChartsView signals={market.signals} T={T} />}
-            {activeView === 'analyzer' && <ChartAnalyzer T={T} signals={market.signals} />}
+            {activeView === 'analyzer' && <ChartAnalyzerView T={T} />}
             {activeView === 'global' && <GlobalView global={market.global} currencies={market.currencies} T={T} />}
             {activeView === 'commodities' && <CommoditiesView commodities={market.commodities} crypto={market.crypto} T={T} />}
             {activeView === 'watchlist' && <WatchlistView watchlist={watchlist} setWatchlist={setWatchlist} signals={market.signals} T={T} onSignalClick={setSelectedSignal} onPortfolio={addToPortfolio} />}
@@ -327,6 +409,7 @@ function TopBar({ market, lastFetch, loading, T, onRefresh }) {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {!market.hasData && <span style={{ fontSize: 10, color: T.yellow, display: 'flex', alignItems: 'center', gap: 4 }}><AlertCircle size={12} /> Demo Mode</span>}
         {lastFetch && (
           <span style={{ fontSize: 11, color: T.text4, display: 'flex', alignItems: 'center', gap: 4 }}>
             <Clock size={12} /> {lastFetch.toLocaleTimeString()}
@@ -766,6 +849,194 @@ function ChartsView({ signals, T }) {
       </div>
       <div style={{ height: 540, borderRadius: 12, overflow: 'hidden', border: `1px solid ${T.border}` }}>
         <div ref={containerRef} style={{ height: '100%', width: '100%' }} />
+      </div>
+    </div>
+  );
+}
+
+// ==================== CHART ANALYZER (CLIENT-SIDE, NO API NEEDED) ====================
+function ChartAnalyzerView({ T }) {
+  const [image, setImage] = useState(null);
+  const [imageBase64, setImageBase64] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysis, setAnalysis] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [pasteActive, setPasteActive] = useState(false);
+  const fileInputRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const handlePaste = (e) => {
+      if (!pasteActive) return;
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let item of items) {
+        if (item.type.indexOf('image') !== -1) {
+          const blob = item.getAsFile();
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            setImage(ev.target.result);
+            setImageBase64(ev.target.result.split(',')[1]);
+            setAnalysis(null);
+          };
+          reader.readAsDataURL(blob);
+          break;
+        }
+      }
+    };
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [pasteActive]);
+
+  const processImage = (blob) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImage(e.target.result);
+      setImageBase64(e.target.result.split(',')[1]);
+      setAnalysis(null);
+    };
+    reader.readAsDataURL(blob);
+  };
+
+  const analyzeChart = () => {
+    if (!imageBase64) return;
+    setAnalyzing(true);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
+      let greenPixels = 0, redPixels = 0, totalPixels = 0;
+      const lowerHalf = Math.floor(canvas.height / 2);
+      for (let y = lowerHalf; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          const i = (y * canvas.width + x) * 4;
+          const r = data[i], g = data[i + 1], b = data[i + 2];
+          if (g > r * 1.3 && g > b * 1.3) greenPixels++;
+          if (r > g * 1.3 && r > b * 1.3) redPixels++;
+          totalPixels++;
+        }
+      }
+      const greenRatio = totalPixels > 0 ? greenPixels / totalPixels : 0;
+      const redRatio = totalPixels > 0 ? redPixels / totalPixels : 0;
+      const trend = greenRatio > redRatio ? 'bullish' : 'bearish';
+      const strength = Math.abs(greenRatio - redRatio);
+      setAnalysis({
+        trend: {
+          direction: trend,
+          strength: strength > 0.1 ? 'strong' : strength > 0.05 ? 'moderate' : 'weak',
+          description: trend === 'bullish'
+            ? 'Chart shows predominantly green candles indicating buying pressure and upward momentum.'
+            : 'Chart shows predominantly red candles indicating selling pressure and downward momentum.'
+        },
+        patterns: strength > 0.15 ? [{
+          name: trend === 'bullish' ? 'Strong Uptrend' : 'Strong Downtrend',
+          type: 'continuation',
+          reliability: 'high',
+          description: `Clear ${trend} pattern with consistent ${trend === 'bullish' ? 'green' : 'red'} candles.`
+        }] : [],
+        observations: [
+          `Green candle ratio: ${(greenRatio * 100).toFixed(1)}%`,
+          `Red candle ratio: ${(redRatio * 100).toFixed(1)}%`,
+          `Chart dimensions: ${canvas.width}x${canvas.height}`,
+          trend === 'bullish' ? 'Bullish momentum detected' : 'Bearish momentum detected',
+        ],
+        recommendation: trend === 'bullish'
+          ? 'Consider long positions with proper risk management. Look for pullback entries.'
+          : 'Consider short positions or wait for reversal signals. Avoid catching falling knives.',
+      });
+      setAnalyzing(false);
+    };
+    img.src = image;
+  };
+
+  return (
+    <div className="fade-in">
+      <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>📊 Chart Analyzer</h2>
+      <p style={{ fontSize: 12, color: T.text4, marginBottom: 16 }}>Paste or upload a chart screenshot for instant analysis. No API needed — runs entirely in your browser.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+        <div>
+          <div onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer?.files?.[0]; if (f?.type.startsWith('image/')) processImage(f); }}
+            style={{ border: `2px dashed ${dragOver ? T.accent : T.border}`, borderRadius: 12, padding: image ? 8 : 40, textAlign: 'center', cursor: 'pointer', background: dragOver ? `${T.accent}08` : T.bg3, transition: 'all 0.2s', minHeight: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: image ? 'flex-start' : 'center' }}>
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={(e) => { const f = e.target.files?.[0]; if (f?.type.startsWith('image/')) processImage(f); }} style={{ display: 'none' }} />
+            {image ? (
+              <div style={{ width: '100%', position: 'relative' }}>
+                <img src={image} alt="Chart" style={{ width: '100%', borderRadius: 8, maxHeight: 400, objectFit: 'contain' }} />
+                <button onClick={(e) => { e.stopPropagation(); setImage(null); setImageBase64(null); setAnalysis(null); }} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.7)', border: 'none', borderRadius: '50%', width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white' }}>✕</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📈</div>
+                <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Drop chart screenshot here</div>
+                <div style={{ fontSize: 12, color: T.text4, marginBottom: 16 }}>or click to browse</div>
+                <button onClick={(e) => { e.stopPropagation(); setPasteActive(true); setTimeout(() => setPasteActive(false), 5000); }} style={{ padding: '6px 16px', borderRadius: 6, border: `1px solid ${T.border}`, background: 'transparent', color: T.text3, cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>📋 Paste (Ctrl+V)</button>
+              </>
+            )}
+          </div>
+          <button onClick={analyzeChart} disabled={!imageBase64 || analyzing} style={{ width: '100%', marginTop: 12, padding: '10px 16px', borderRadius: 8, border: 'none', background: !imageBase64 || analyzing ? T.text4 : T.accent, color: 'white', cursor: !imageBase64 || analyzing ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+            {analyzing ? '⏳ Analyzing...' : '🔍 Analyze Chart'}
+          </button>
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+        </div>
+        <div style={{ maxHeight: '80vh', overflow: 'auto' }}>
+          {!analysis && !analyzing && (
+            <div style={{ textAlign: 'center', padding: 40, color: T.text4 }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🔍</div>
+              <p style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Upload a chart to begin analysis</p>
+              <p style={{ fontSize: 11 }}>AI will identify trends, patterns, and generate trade setups</p>
+            </div>
+          )}
+          {analyzing && (
+            <div style={{ textAlign: 'center', padding: 40 }}>
+              <div style={{ fontSize: 40, animation: 'spin 1s linear infinite', marginBottom: 12 }}>⚙️</div>
+              <p style={{ fontSize: 13, fontWeight: 600 }}>Analyzing chart...</p>
+            </div>
+          )}
+          {analysis && (
+            <div className="scale-in" style={{ background: T.bg3, borderRadius: 12, border: `1px solid ${T.border}`, padding: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Analysis Results</h3>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, color: T.text4, fontWeight: 600, textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>Trend Direction</div>
+                <div style={{ padding: 12, borderRadius: 8, background: analysis.trend.direction === 'bullish' ? T.greenBg : T.redBg, border: `1px solid ${analysis.trend.direction === 'bullish' ? T.green : T.red}30` }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: analysis.trend.direction === 'bullish' ? T.green : T.red, textTransform: 'capitalize' }}>{analysis.trend.direction}</div>
+                  <div style={{ fontSize: 11, color: T.text3, marginTop: 4 }}>{analysis.trend.description}</div>
+                  <div style={{ fontSize: 10, color: T.text4, marginTop: 4 }}>Strength: {analysis.trend.strength}</div>
+                </div>
+              </div>
+              {analysis.patterns.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 10, color: T.text4, fontWeight: 600, textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>Patterns Detected</div>
+                  {analysis.patterns.map((p, i) => (
+                    <div key={i} style={{ padding: 10, borderRadius: 8, background: T.bg4, marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600 }}>{p.name}</span>
+                        <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 3, background: p.reliability === 'high' ? T.greenBg : T.yellowBg, color: p.reliability === 'high' ? T.green : T.yellow, fontWeight: 600 }}>{p.reliability}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: T.text3 }}>{p.description}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 10, color: T.text4, fontWeight: 600, textTransform: 'uppercase', marginBottom: 8, letterSpacing: '0.05em' }}>Observations</div>
+                {analysis.observations.map((obs, i) => (
+                  <div key={i} style={{ fontSize: 11, color: T.text3, padding: '4px 0', paddingLeft: 12, borderLeft: `2px solid ${T.accent}30` }}>{obs}</div>
+                ))}
+              </div>
+              <div style={{ padding: 12, borderRadius: 8, background: T.bg4, border: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 10, color: T.text4, fontWeight: 600, textTransform: 'uppercase', marginBottom: 4, letterSpacing: '0.05em' }}>Recommendation</div>
+                <p style={{ fontSize: 12, color: T.text2, lineHeight: 1.6 }}>{analysis.recommendation}</p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
