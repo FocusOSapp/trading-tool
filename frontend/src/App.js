@@ -13,6 +13,7 @@ import {
   BookmarkPlus, Trash2, Edit3, Calculator,
 } from 'lucide-react';
 import TradeJournal from './components/TradeJournal';
+import { fetchAllMarketData } from './services/api';
 
 const DATA_BASE = process.env.REACT_APP_DATA_URL || '';
 
@@ -194,6 +195,7 @@ function useMarketData() {
 
   const fetchAll = useCallback(async () => {
     try {
+      // Try GitHub Actions data first
       const [scanRes, sectorsRes, signalsRes, overviewRes, newsRes, globalRes, breadthRes, shockersRes, fiiRes] = await Promise.all([
         fetch(`${DATA_BASE}/data/scan.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
         fetch(`${DATA_BASE}/data/sectors.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
@@ -206,11 +208,24 @@ function useMarketData() {
         fetch(`${DATA_BASE}/data/fii_dii.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
       ]);
       const hasData = !!(scanRes && scanRes.signals && scanRes.signals.length > 0);
+
+      // Try live API data
+      const apiData = await fetchAllMarketData();
+
+      // Merge: API data > GitHub Actions data > Demo data
+      const mergedOverview = apiData?.overview?.nifty
+        ? { ...DEMO_DATA.overview, ...apiData.overview }
+        : overviewRes || (hasData ? scanRes.market_overview : DEMO_DATA.overview);
+
+      const mergedNews = apiData?.news?.length > 0
+        ? apiData.news
+        : newsRes?.news || DEMO_DATA.news;
+
       setData({
         sectors: sectorsRes?.sectors || DEMO_DATA.sectors,
         signals: signalsRes?.signals || (hasData ? scanRes.signals : DEMO_DATA.signals),
-        overview: overviewRes || (hasData ? scanRes.market_overview : DEMO_DATA.overview),
-        news: newsRes?.news || DEMO_DATA.news,
+        overview: mergedOverview,
+        news: mergedNews,
         scan: scanRes,
         global: globalRes?.global_markets || DEMO_DATA.global,
         commodities: globalRes?.commodities || DEMO_DATA.commodities,
@@ -219,7 +234,7 @@ function useMarketData() {
         fiiDii: fiiRes || DEMO_DATA.fiiDii,
         breadth: breadthRes || DEMO_DATA.breadth,
         shockers: shockersRes?.volume_shockers || DEMO_DATA.shockers,
-        hasData,
+        hasData: hasData || !!apiData?.overview?.nifty,
       });
       setLastFetch(new Date());
     } catch (e) {

@@ -5,12 +5,15 @@
     { "src": "frontend/package.json", "use": "@vercel/static-build", "config": { "distDir": "build" } }
   ],
   "routes": [
-    { "src": "/api/stock/(.*)", "dest": "/api/stock/analyze.py" },
-    { "src": "/api/(.*)", "dest": "/api/index.py" },
+    { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/static/(.*)", "dest": "/frontend/static/$1" },
     { "src": "/(.*)", "dest": "/frontend/$1" }
   ],
-  "crons": [
-    { "path": "/api/scan", "schedule": "*/15 * * * *" }
-  ]
+  "env": {
+    "TWELVE_DATA_KEY": "",
+    "FINNHUB_KEY": "",
+    "ALPHA_VANTAGE_KEY": "",
+    "NEWS_API_KEY": "743ba73c1809423fb1e87f920772e80f",
+    "GEMINI_API_KEY": "AIzaSyDbtYd2-MvGmAt9PI93uKZ1tgK7KNOsXwc"
+  }
 }
