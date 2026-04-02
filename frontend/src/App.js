@@ -2,35 +2,11 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   Activity, BarChart3, TrendingUp, Zap, Layers, Search, RefreshCw, ArrowUpRight, ArrowDownRight,
   Clock, Target, Shield, XCircle, Newspaper, Users, DollarSign, Bell, Settings, Star,
-  BookmarkPlus, Trash2, Edit3, Plus, Minus, ChevronDown, ChevronUp, AlertTriangle,
-  CheckCircle, X, Maximize2, Minimize2, Eye, EyeOff, PieChart, TrendingDown,
-  Calendar, Award, BarChart2, Hash, Filter, Download, Upload, Save, Copy,
-  ExternalLink, MessageSquare, ThumbsUp, ThumbsDown, Info, HelpCircle,
-  LayoutGrid, List, Map, Grid, Columns, Rows, Split,
-  Sun, Moon, Monitor, Palette, Type, ZoomIn, ZoomOut,
-  Play, Pause, SkipForward, SkipBack, Repeat, Shuffle,
-  Radio, Signal, Wifi, WifiOff, Battery, BatteryCharging,
-  Cpu, HardDrive, MemoryStick, Network, Globe, Lock, Unlock,
-  Key, ShieldCheck, AlertOctagon, AlertCircle, Check, XOctagon,
-  FileText, FilePlus, FileMinus, FileEdit, FileCheck, FileX,
-  Folder, FolderPlus, FolderMinus, FolderOpen, FolderX,
-  Home, Mail, Phone, MapPin, Link, AtSign, Hash2,
-  Percent, DollarSign2, Euro, Pound, Yen, Bitcoin,
-  CreditCard, Wallet, Receipt, ShoppingCart, Package, Truck,
-  User, Users2, UserPlus, UserMinus, UserCheck, UserX,
-  Heart, Star2, Bookmark, Tag, Flag, Award2, Trophy, Medal,
-  Crown, Gem, Diamond, Sparkles, Flame, Zap2, Bolt,
-  Lightning, Thunder, Storm, Cloud, CloudRain, CloudSnow,
-  CloudLightning, CloudDrizzle, CloudFog, CloudOff, Cloudy,
-  Sunrise, Sunset, Moon2, Stars, Sparkle, Glow, Shine,
-  Rainbow, Aurora, Sunset2, Sunrise2, Dawn, Dusk, Twilight,
-  Night, Day, Morning, Evening, Afternoon, Midnight, Noon,
-  Hourglass, Timer, Stopwatch, Clock2, Watch, Alarm, TimerOff,
-  SandClock, Calendar2, CalendarCheck, CalendarX, CalendarPlus, CalendarMinus,
-  CalendarDays, CalendarHeart, CalendarStar, CalendarClock, CalendarRange,
-  CalendarCheck2, CalendarX2, CalendarPlus2, CalendarMinus2,
-  CalendarDays2, CalendarHeart2, CalendarStar2, CalendarClock2, CalendarRange2,
+  Plus, Minus, ChevronDown, ChevronUp, AlertTriangle, CheckCircle, X,
+  PieChart, TrendingDown, Calendar, Award, BarChart2, Hash, Filter,
+  ExternalLink, Info, LayoutGrid, Globe, FileText,
 } from 'lucide-react';
+import ChartAnalyzer from './components/ChartAnalyzer';
 
 const DATA_BASE = process.env.REACT_APP_DATA_URL || '';
 
@@ -199,12 +175,13 @@ export default function App() {
     { id: 'heatmap', label: 'Heatmap', icon: LayoutGrid, shortcut: '2' },
     { id: 'signals', label: 'Signals', icon: Zap, shortcut: '3' },
     { id: 'charts', label: 'Charts', icon: BarChart3, shortcut: '4' },
-    { id: 'global', label: 'Global', icon: Globe, shortcut: '5' },
-    { id: 'commodities', label: 'Commodities', icon: DollarSign, shortcut: '6' },
-    { id: 'watchlist', label: 'Watchlist', icon: Star, shortcut: '7' },
-    { id: 'portfolio', label: 'Portfolio', icon: PieChart, shortcut: '8' },
-    { id: 'breadth', label: 'Breadth', icon: BarChart2, shortcut: '9' },
-    { id: 'shockers', label: 'Shockers', icon: Zap, shortcut: '0' },
+    { id: 'analyzer', label: 'Chart AI', icon: Search, shortcut: '5' },
+    { id: 'global', label: 'Global', icon: Globe, shortcut: '6' },
+    { id: 'commodities', label: 'Commodities', icon: DollarSign, shortcut: '7' },
+    { id: 'watchlist', label: 'Watchlist', icon: Star, shortcut: '8' },
+    { id: 'portfolio', label: 'Portfolio', icon: PieChart, shortcut: '9' },
+    { id: 'breadth', label: 'Breadth', icon: BarChart2 },
+    { id: 'shockers', label: 'Shockers', icon: Zap },
     { id: 'journal', label: 'Journal', icon: FileText },
     { id: 'news', label: 'News', icon: Newspaper },
     { id: 'calculator', label: 'Risk Calc', icon: CalculatorIcon },
@@ -252,6 +229,7 @@ export default function App() {
             {activeView === 'heatmap' && <HeatmapView sectors={market.sectors} stocks={market.signals} T={T} />}
             {activeView === 'signals' && <SignalsView signals={market.signals} T={T} onSignalClick={setSelectedSignal} onWatch={watchSignal} onPortfolio={addToPortfolio} onJournal={addJournalEntry} />}
             {activeView === 'charts' && <ChartsView signals={market.signals} T={T} />}
+            {activeView === 'analyzer' && <ChartAnalyzer T={T} signals={market.signals} />}
             {activeView === 'global' && <GlobalView global={market.global} currencies={market.currencies} T={T} />}
             {activeView === 'commodities' && <CommoditiesView commodities={market.commodities} crypto={market.crypto} T={T} />}
             {activeView === 'watchlist' && <WatchlistView watchlist={watchlist} setWatchlist={setWatchlist} signals={market.signals} T={T} onSignalClick={setSelectedSignal} onPortfolio={addToPortfolio} />}
