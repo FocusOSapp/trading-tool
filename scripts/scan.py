@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Trading Pro Scanner v4 - Bulletproof Edition
-Every section isolated. Never fails. Always outputs data.
+Trading Pro Scanner v5 - Bulletproof Edition
+Always outputs valid data. Never fails.
 """
 
 import yfinance as yf
@@ -17,7 +17,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
 
-# ==================== SAFE DATA FETCHER ====================
 def safe_get(symbol, period="3mo", interval="1d"):
     try:
         df = yf.Ticker(symbol).history(period=period, interval=interval)
@@ -40,7 +39,6 @@ def price_info(symbol):
     except:
         return None
 
-# ==================== SECTORS ====================
 def scan_sectors():
     try:
         indices = {
@@ -82,7 +80,6 @@ def scan_sectors():
         print(f"Sectors error: {e}")
         return []
 
-# ==================== STOCKS ====================
 def scan_stocks():
     try:
         stocks = [
@@ -111,12 +108,10 @@ def scan_stocks():
                 avg_vol = df["Volume"].tail(20).mean()
                 vr = round(vol / avg_vol, 2) if avg_vol > 0 else 1
 
-                # Indicators
                 ema20 = close.ewm(span=20).mean().iloc[-1]
                 ema50 = close.ewm(span=50).mean().iloc[-1]
                 ema200 = close.ewm(span=200).mean().iloc[-1] if len(close) >= 200 else ema50
 
-                # RSI
                 rsi_val = 50
                 if len(close) >= 14:
                     delta = close.diff()
@@ -124,14 +119,8 @@ def scan_stocks():
                     loss = (-delta.where(delta < 0, 0)).rolling(14).mean().iloc[-1]
                     if loss > 0: rsi_val = round(100 - (100 / (1 + gain/loss)), 1)
 
-                # Day change
                 day_ch = ((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) * 100 if len(close) >= 2 else 0
 
-                # Support/Resistance (simple)
-                recent_high = round(float(high.tail(20).max()), 2)
-                recent_low = round(float(low.tail(20).min()), 2)
-
-                # === BUY SIGNAL LOGIC ===
                 buy_score = 0
                 if price > ema20: buy_score += 1.0
                 if price > ema50: buy_score += 1.0
@@ -143,7 +132,6 @@ def scan_stocks():
                 if day_ch > 0: buy_score += 0.5
                 if day_ch > 2: buy_score += 0.5
 
-                # === SELL SIGNAL LOGIC ===
                 sell_score = 0
                 if price < ema20: sell_score += 1.0
                 if price < ema50: sell_score += 1.0
@@ -155,7 +143,6 @@ def scan_stocks():
                 if day_ch < 0: sell_score += 0.5
                 if day_ch < -2: sell_score += 0.5
 
-                # Pick the stronger signal
                 buy_conf = min(int(buy_score * 1.4), 10)
                 sell_conf = min(int(sell_score * 1.4), 10)
 
@@ -177,7 +164,7 @@ def scan_stocks():
                         "indicator_score": round(1.5 if ema20 > ema50 else 0.8, 1),
                         "sentiment_score": 1.0, "timestamp": datetime.utcnow().isoformat()
                     })
-                elif sell_conf >= 7:
+                elif sell_conf >= 6:
                     sl = round(price * 1.04, 2)
                     t1 = round(price * 0.96, 2)
                     t2 = round(price * 0.92, 2)
@@ -204,7 +191,6 @@ def scan_stocks():
         print(f"Stocks error: {e}")
         return [], 0
 
-# ==================== GLOBAL MARKETS ====================
 def scan_global():
     try:
         items = {}
@@ -219,7 +205,6 @@ def scan_global():
     except:
         return {}
 
-# ==================== COMMODITIES ====================
 def scan_commodities():
     try:
         items = {}
@@ -233,7 +218,6 @@ def scan_commodities():
     except:
         return {}
 
-# ==================== CRYPTO ====================
 def scan_crypto():
     try:
         items = {}
@@ -247,7 +231,6 @@ def scan_crypto():
     except:
         return {}
 
-# ==================== NEWS ====================
 def scan_news():
     try:
         if not NEWS_API_KEY: return []
@@ -271,7 +254,6 @@ def scan_news():
     except:
         return []
 
-# ==================== MARKET OVERVIEW ====================
 def scan_overview():
     try:
         o = {}
@@ -284,7 +266,6 @@ def scan_overview():
     except:
         return {}
 
-# ==================== MAIN ====================
 def main():
     print(f"=== Trading Pro Scan {datetime.utcnow().isoformat()} ===")
 
@@ -309,7 +290,6 @@ def main():
     news = scan_news()
     print(f"News: {len(news)}")
 
-    # Write all data
     data = {
         "timestamp": datetime.utcnow().isoformat(),
         "sectors_analyzed": len(sectors),
@@ -344,4 +324,15 @@ def main():
     print("=== Data written ===")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"SCAN ERROR: {e}")
+        import traceback
+        traceback.print_exc()
+        DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
+        os.makedirs(DATA_DIR, exist_ok=True)
+        for f in ["scan.json", "sectors.json", "signals.json", "overview.json", "news.json", "global.json", "breadth.json", "shockers.json", "fii_dii.json"]:
+            with open(os.path.join(DATA_DIR, f), "w") as fh:
+                json.dump({}, fh)
+        print("Wrote empty data files to continue workflow")
