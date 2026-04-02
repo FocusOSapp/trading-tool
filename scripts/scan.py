@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-Market Scanner - Runs in GitHub Actions every 15 minutes
-Outputs JSON data files that the frontend reads directly
-Zero server cost, unlimited scans
+Trading Pro Scanner v3 - Enhanced with News API, Global Markets, Commodities, Crypto, FII/DII, Market Breadth
+Runs in GitHub Actions every 15 minutes
 """
 
 import yfinance as yf
@@ -12,7 +11,7 @@ import ta
 import requests
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 
 # ==================== CONFIG ====================
@@ -55,7 +54,35 @@ HIGH_MOMENTUM_WATCHLIST = [
     "ITC.NS", "KOTAKBANK.NS", "LT.NS", "ASIANPAINT.NS", "AXISBANK.NS",
 ]
 
-NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "")
+# Global indices
+GLOBAL_INDICES = {
+    "S&P 500": "^GSPC", "NASDAQ": "^IXIC", "DOW": "^DJI",
+    "FTSE": "^FTSE", "DAX": "^GDAXI", "CAC": "^FCHI",
+    "NIKKEI": "^N225", "HANG SENG": "^HSI", "SHANGHAI": "000001.SS",
+    "KOSPI": "^KS11", "STI": "^STI", "ASX 200": "^AXJO",
+}
+
+# Commodities
+COMMODITIES = {
+    "Gold": "GC=F", "Silver": "SI=F", "Crude Oil": "CL=F",
+    "Natural Gas": "NG=F", "Copper": "HG=F", "Platinum": "PL=F",
+    "Brent Oil": "BZ=F", "Wheat": "ZW=F", "Corn": "ZC=F",
+}
+
+# Crypto
+CRYPTOS = {
+    "Bitcoin": "BTC-USD", "Ethereum": "ETH-USD", "BNB": "BNB-USD",
+    "Solana": "SOL-USD", "XRP": "XRP-USD", "Cardano": "ADA-USD",
+    "Dogecoin": "DOGE-USD", "Polygon": "MATIC-USD",
+}
+
+# Currency pairs
+CURRENCIES = {
+    "USD/INR": "USDINR=X", "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X",
+    "USD/JPY": "JPY=X", "EUR/INR": "EURINR=X", "GBP/INR": "GBPINR=X",
+}
+
+NEWS_API_KEY = os.environ.get("NEWS_API_KEY", "743ba73c1809423fb1e87f920772e80f")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -65,21 +92,33 @@ os.makedirs(DATA_DIR, exist_ok=True)
 def get_data(symbol, period="3mo", interval="1d", min_rows=2):
     try:
         df = yf.Ticker(symbol).history(period=period, interval=interval)
-        if df.empty:
-            return None
+        if df.empty: return None
         df = df.copy()
         while len(df) > 0 and pd.isna(df['Close'].iloc[-1]):
             df = df.iloc[:-1]
-        if df.empty or len(df) < min_rows:
-            return None
+        if df.empty or len(df) < min_rows: return None
         return df
     except Exception:
         return None
 
 
+def get_price_info(symbol):
+    """Get current price and change for any symbol"""
+    try:
+        df = get_data(symbol, period="2d", interval="1d", min_rows=1)
+        if df is None or len(df) < 1: return None
+        c = df["Close"]
+        price = round(float(c.iloc[-1]), 2)
+        change = 0
+        if len(c) >= 2:
+            change = round(((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2]) * 100, 2)
+        return {"price": price, "change": change}
+    except Exception:
+        return None
+
+
 def compute_indicators(df):
-    if df is None or len(df) < 20:
-        return {}
+    if df is None or len(df) < 20: return {}
     close, high, low, volume = df["Close"], df["High"], df["Low"], df["Volume"]
     rsi = ta.momentum.RSIIndicator(close, window=14).rsi()
     macd = ta.trend.MACD(close)
@@ -110,20 +149,15 @@ def compute_indicators(df):
     c["above_ema_200"] = p > (c["ema_200"] or 0)
     c["ema_20_50_bullish"] = (c["ema_20"] or 0) > (c["ema_50"] or 0)
     c["golden_cross"] = (c["ema_50"] or 0) > (c["ema_200"] or 0)
-    if len(df) >= 2:
-        c["day_change_pct"] = round(((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) * 100, 2)
-    if len(df) >= 5:
-        c["week_change_pct"] = round(((close.iloc[-1] - close.iloc[-5]) / close.iloc[-5]) * 100, 2)
-    if len(df) >= 20:
-        c["month_change_pct"] = round(((close.iloc[-1] - close.iloc[-20]) / close.iloc[-20]) * 100, 2)
+    if len(df) >= 2: c["day_change_pct"] = round(((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) * 100, 2)
+    if len(df) >= 5: c["week_change_pct"] = round(((close.iloc[-1] - close.iloc[-5]) / close.iloc[-5]) * 100, 2)
+    if len(df) >= 20: c["month_change_pct"] = round(((close.iloc[-1] - close.iloc[-20]) / close.iloc[-20]) * 100, 2)
     return c
 
 
 def _f(v):
-    try:
-        return round(float(v), 2)
-    except (ValueError, TypeError):
-        return None
+    try: return round(float(v), 2)
+    except: return None
 
 
 def find_sr(df, lookback=60):
@@ -142,7 +176,255 @@ def find_sr(df, lookback=60):
     return {"resistance": res, "support": sup, "nearest_resistance": res[0] if res else None, "nearest_support": sup[-1] if sup else None}
 
 
-# ==================== ANALYSIS ====================
+# ==================== NEWS API ====================
+def get_news_from_api():
+    """Get news from NewsAPI.org with full articles"""
+    news = []
+    if not NEWS_API_KEY or NEWS_API_KEY == "your_news_api_key_here":
+        return get_news_from_google()
+
+    # 1. Top India business news
+    try:
+        url = "https://newsapi.org/v2/top-headlines"
+        params = {"country": "in", "category": "business", "pageSize": 15, "apiKey": NEWS_API_KEY}
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "ok":
+                for a in data.get("articles", []):
+                    news.append({
+                        "title": a.get("title", ""),
+                        "description": a.get("description", ""),
+                        "source": a.get("source", {}).get("name", ""),
+                        "url": a.get("url", ""),
+                        "image": a.get("urlToImage", ""),
+                        "published_at": a.get("publishedAt", ""),
+                        "sentiment": analyze_sentiment(a.get("title", "") + " " + (a.get("description", "") or "")),
+                        "category": "business",
+                    })
+    except Exception as e:
+        print(f"NewsAPI top headlines error: {e}")
+
+    # 2. Stock market specific news
+    try:
+        url = "https://newsapi.org/v2/everything"
+        params = {
+            "q": "stock market India NSE BSE",
+            "language": "en", "sortBy": "publishedAt",
+            "pageSize": 10, "apiKey": NEWS_API_KEY,
+            "from": (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%d"),
+        }
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "ok":
+                for a in data.get("articles", []):
+                    news.append({
+                        "title": a.get("title", ""),
+                        "description": a.get("description", ""),
+                        "source": a.get("source", {}).get("name", ""),
+                        "url": a.get("url", ""),
+                        "image": a.get("urlToImage", ""),
+                        "published_at": a.get("publishedAt", ""),
+                        "sentiment": analyze_sentiment(a.get("title", "") + " " + (a.get("description", "") or "")),
+                        "category": "markets",
+                    })
+    except Exception as e:
+        print(f"NewsAPI market news error: {e}")
+
+    # 3. Global economy news
+    try:
+        url = "https://newsapi.org/v2/everything"
+        params = {
+            "q": "economy inflation interest rates Fed RBI",
+            "language": "en", "sortBy": "publishedAt",
+            "pageSize": 5, "apiKey": NEWS_API_KEY,
+            "from": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%d"),
+        }
+        resp = requests.get(url, params=params, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("status") == "ok":
+                for a in data.get("articles", []):
+                    news.append({
+                        "title": a.get("title", ""),
+                        "description": a.get("description", ""),
+                        "source": a.get("source", {}).get("name", ""),
+                        "url": a.get("url", ""),
+                        "image": a.get("urlToImage", ""),
+                        "published_at": a.get("publishedAt", ""),
+                        "sentiment": analyze_sentiment(a.get("title", "") + " " + (a.get("description", "") or "")),
+                        "category": "macro",
+                    })
+    except Exception as e:
+        print(f"NewsAPI macro error: {e}")
+
+    return news[:25]
+
+
+def get_news_from_google():
+    """Fallback: Google News RSS"""
+    news = []
+    try:
+        url = "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FuQjBHZ0pRVkNnQVAB?hl=en-IN&gl=IN&ceid=IN:en"
+        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for item in soup.find_all("item")[:15]:
+                title = item.find("title").text if item.find("title") else ""
+                source = item.find("source").text if item.find("source") else ""
+                link = item.find("link").text if item.find("link") else ""
+                pub = item.find("pubDate").text if item.find("pubDate") else ""
+                news.append({
+                    "title": title, "description": "", "source": source, "url": link,
+                    "image": "", "published_at": pub,
+                    "sentiment": analyze_sentiment(title), "category": "business",
+                })
+    except Exception as e:
+        print(f"Google News error: {e}")
+    return news
+
+
+def analyze_sentiment(text):
+    text = text.lower()
+    pos = ["surge", "rally", "gain", "buy", "upgrade", "bullish", "breakout", "rise", "profit", "growth", "strong", "beat", "record", "high", "jump", "soar", "outperform", "positive", "recovery", "boom"]
+    neg = ["crash", "fall", "sell", "downgrade", "bearish", "loss", "decline", "weak", "miss", "low", "drop", "plunge", "warning", "risk", "concern", "negative", "down", "slump", "recession", "crisis"]
+    p = sum(1 for w in pos if w in text)
+    n = sum(1 for w in neg if w in text)
+    if p > n: return "positive"
+    if n > p: return "negative"
+    return "neutral"
+
+
+# ==================== GLOBAL MARKETS ====================
+def get_global_markets():
+    markets = []
+    for name, sym in GLOBAL_INDICES.items():
+        info = get_price_info(sym)
+        if info:
+            markets.append({"name": name, "symbol": sym, **info})
+    return markets
+
+
+# ==================== COMMODITIES ====================
+def get_commodities():
+    items = []
+    for name, sym in COMMODITIES.items():
+        info = get_price_info(sym)
+        if info:
+            items.append({"name": name, "symbol": sym, **info})
+    return items
+
+
+# ==================== CRYPTO ====================
+def get_crypto():
+    items = []
+    for name, sym in CRYPTOS.items():
+        info = get_price_info(sym)
+        if info:
+            items.append({"name": name, "symbol": sym, **info})
+    return items
+
+
+# ==================== CURRENCIES ====================
+def get_currencies():
+    items = []
+    for name, sym in CURRENCIES.items():
+        info = get_price_info(sym)
+        if info:
+            items.append({"name": name, "symbol": sym, **info})
+    return items
+
+
+# ==================== FII/DII ====================
+def get_fii_dii():
+    """Fetch FII/DII data from NSE"""
+    try:
+        url = "https://www.nseindia.com/api/fandd-equity"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36", "Accept": "application/json"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {
+                "fii_buy": data.get("fiiBuyValue", 0),
+                "fii_sell": data.get("fiiSellValue", 0),
+                "fii_net": data.get("fiiNetValue", 0),
+                "dii_buy": data.get("diiBuyValue", 0),
+                "dii_sell": data.get("diiSellValue", 0),
+                "dii_net": data.get("diiNetValue", 0),
+                "date": data.get("timestamp", ""),
+            }
+    except Exception as e:
+        print(f"FII/DII error: {e}")
+    return {}
+
+
+# ==================== MARKET BREADTH ====================
+def get_market_breadth():
+    """Get advance/decline ratio and 52-week high/low"""
+    breadth = {"advance": 0, "decline": 0, "unchanged": 0, "new_highs": 0, "new_lows": 0, "total": 0}
+    try:
+        # Scrape NSE advance/decline
+        url = "https://www.nseindia.com/api/live-market-advance-decline"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            if "data" in data:
+                for item in data["data"]:
+                    breadth["advance"] += item.get("advances", 0)
+                    breadth["decline"] += item.get("declines", 0)
+                    breadth["unchanged"] += item.get("unchanged", 0)
+                breadth["total"] = breadth["advance"] + breadth["decline"] + breadth["unchanged"]
+    except Exception as e:
+        print(f"Market breadth error: {e}")
+
+    # Calculate 52w high/low from watchlist
+    highs, lows = 0, 0
+    for sym in HIGH_MOMENTUM_WATCHLIST[:30]:
+        try:
+            df = get_data(sym, period="1y", interval="1d")
+            if df is not None and len(df) >= 200:
+                current = float(df["Close"].iloc[-1])
+                high_52 = float(df["High"].max())
+                low_52 = float(df["Low"].min())
+                if current >= high_52 * 0.98: highs += 1
+                if current <= low_52 * 1.02: lows += 1
+        except:
+            pass
+    breadth["new_highs"] = highs
+    breadth["new_lows"] = lows
+    return breadth
+
+
+# ==================== VOLUME SHOCKERS ====================
+def get_volume_shockers():
+    """Find stocks with unusual volume"""
+    shockers = []
+    for sym in HIGH_MOMENTUM_WATCHLIST:
+        try:
+            df = get_data(sym, period="1mo", interval="1d")
+            if df is None or len(df) < 20: continue
+            vol = df["Volume"].iloc[-1]
+            avg_vol = df["Volume"].tail(20).mean()
+            ratio = vol / avg_vol if avg_vol > 0 else 0
+            if ratio > 2.0:
+                close = df["Close"]
+                change = ((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2]) * 100 if len(close) >= 2 else 0
+                shockers.append({
+                    "symbol": sym, "name": sym.replace(".NS", ""),
+                    "volume": int(vol), "avg_volume": int(avg_vol),
+                    "volume_ratio": round(ratio, 2),
+                    "change_pct": round(change, 2),
+                    "price": round(float(close.iloc[-1]), 2),
+                })
+        except:
+            pass
+    shockers.sort(key=lambda x: x["volume_ratio"], reverse=True)
+    return shockers[:15]
+
+
+# ==================== SECTOR ANALYSIS ====================
 def analyze_sectors():
     results = {}
     for name, ticker in SECTOR_INDICES.items():
@@ -155,7 +437,7 @@ def analyze_sectors():
                 avg_vol = data["Volume"].mean()
                 vol_ratio = vol / avg_vol if avg_vol > 0 else 1
                 results[name] = {"change_pct": round(change, 2), "volume_ratio": round(vol_ratio, 2)}
-        except Exception:
+        except:
             pass
 
     nifty = get_data("^NSEI", period="1mo", interval="1d", min_rows=2)
@@ -183,17 +465,15 @@ def analyze_sectors():
     return scored
 
 
+# ==================== STOCK SCANNING ====================
 def scan_stock(symbol):
     df = get_data(symbol, period="6mo", interval="1d")
-    if df is None or len(df) < 50:
-        return None
+    if df is None or len(df) < 50: return None
     ind = compute_indicators(df)
     sr = find_sr(df)
-    if not ind:
-        return None
+    if not ind: return None
 
     price = ind.get("current_price", 0)
-    # Structure
     s = 0.0
     if ind.get("above_ema_20"): s += 0.5
     if ind.get("above_ema_50"): s += 0.5
@@ -205,7 +485,6 @@ def scan_stock(symbol):
     if ind.get("day_change_pct", 0) > 2: s += 0.5
     structure = min(s, 3.0)
 
-    # Volume
     s = 0.0
     vr = ind.get("volume_ratio", 1)
     if vr > 2.5: s += 1.5
@@ -217,7 +496,6 @@ def scan_stock(symbol):
     elif ind.get("day_change_pct", 0) > 1 and vr > 1.2: s += 0.5
     volume = min(s, 3.0)
 
-    # Indicators
     s = 0.0
     rsi = ind.get("rsi_14", 50)
     if 55 <= rsi <= 70: s += 0.8
@@ -228,9 +506,7 @@ def scan_stock(symbol):
     if ind.get("adx", 0) and ind["adx"] > 25: s += 0.3
     indicator = min(s, 2.0)
 
-    total = structure + volume + indicator + 1.0  # sentiment baseline
-
-    # Signal
+    total = structure + volume + indicator + 1.0
     t1 = round(nr, 2) if nr and price > 0 else round(price * 1.03, 2)
     t2 = round(nr * 1.05, 2) if nr and price > 0 else round(price * 1.07, 2)
     ns = sr.get("nearest_support")
@@ -260,50 +536,19 @@ def scan_stock(symbol):
     }
 
 
-def get_market_overview():
-    overview = {}
-    for sym, key in [("^NSEI", "nifty"), ("^BSESN", "sensex"), ("INDIAVIX.NS", "vix")]:
-        d = get_data(sym, period="2d", interval="1d", min_rows=1)
-        if d is not None and len(d) >= 1:
-            c = d["Close"]
-            overview[key] = round(float(c.iloc[-1]), 2)
-            overview[f"{key}_change"] = round(((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2]) * 100, 2) if len(c) >= 2 else 0.0
-    return overview
-
-
-def get_news():
-    news = []
-    try:
-        url = "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRFZxYUdjU0FuQjBHZ0pRVkNnQVAB?hl=en-IN&gl=IN&ceid=IN:en"
-        resp = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for item in soup.find_all("item")[:10]:
-                title = item.find("title").text if item.find("title") else ""
-                source = item.find("source").text if item.find("source") else ""
-                link = item.find("link").text if item.find("link") else ""
-                pub = item.find("pubDate").text if item.find("pubDate") else ""
-                sent = "positive" if any(w in title.lower() for w in ["surge", "rally", "gain", "buy", "bullish", "rise", "strong", "beat"]) else "negative" if any(w in title.lower() for w in ["crash", "fall", "sell", "bearish", "loss", "decline", "weak", "drop"]) else "neutral"
-                news.append({"title": title, "source": source, "url": link, "published_at": pub, "sentiment": sent})
-    except Exception:
-        pass
-    return news
-
-
 # ==================== MAIN ====================
 def main():
     print(f"Starting scan at {datetime.utcnow().isoformat()}")
 
     # 1. Sectors
     sectors = analyze_sectors()
-    print(f"Sectors analyzed: {len(sectors)}")
+    print(f"Sectors: {len(sectors)}")
 
-    # 2. Hot stocks from top sectors
+    # 2. Hot stocks
     hot = []
     for s in sectors[:3]:
         mapped = SECTOR_NAME_MAP.get(s["name"], "")
-        if mapped in SECTOR_STOCKS:
-            hot.extend(SECTOR_STOCKS[mapped])
+        if mapped in SECTOR_STOCKS: hot.extend(SECTOR_STOCKS[mapped])
     all_symbols = list(set(hot + HIGH_MOMENTUM_WATCHLIST))
 
     # 3. Scan stocks
@@ -314,20 +559,60 @@ def main():
             r = scan_stock(sym)
             if r:
                 scanned += 1
-                if r["confidence"] >= 7:
-                    signals.append(r)
+                if r["confidence"] >= 7: signals.append(r)
         except Exception as e:
-            print(f"Error scanning {sym}: {e}")
+            print(f"Error {sym}: {e}")
     signals.sort(key=lambda x: x["confidence"], reverse=True)
-    print(f"Stocks scanned: {scanned}, Signals: {len(signals)}")
+    print(f"Scanned: {scanned}, Signals: {len(signals)}")
 
     # 4. Market overview
-    overview = get_market_overview()
+    overview = {}
+    for sym, key in [("^NSEI", "nifty"), ("^BSESN", "sensex"), ("INDIAVIX.NS", "vix")]:
+        d = get_data(sym, period="2d", interval="1d", min_rows=1)
+        if d is not None and len(d) >= 1:
+            c = d["Close"]
+            overview[key] = round(float(c.iloc[-1]), 2)
+            overview[f"{key}_change"] = round(((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2]) * 100, 2) if len(c) >= 2 else 0.0
 
-    # 5. News
-    news = get_news()
+    # 5. Global markets
+    print("Fetching global markets...")
+    global_markets = get_global_markets()
+    print(f"Global markets: {len(global_markets)}")
 
-    # 6. Write data files
+    # 6. Commodities
+    print("Fetching commodities...")
+    commodities = get_commodities()
+    print(f"Commodities: {len(commodities)}")
+
+    # 7. Crypto
+    print("Fetching crypto...")
+    crypto = get_crypto()
+    print(f"Crypto: {len(crypto)}")
+
+    # 8. Currencies
+    print("Fetching currencies...")
+    currencies = get_currencies()
+    print(f"Currencies: {len(currencies)}")
+
+    # 9. FII/DII
+    print("Fetching FII/DII...")
+    fii_dii = get_fii_dii()
+
+    # 10. Market breadth
+    print("Calculating market breadth...")
+    breadth = get_market_breadth()
+
+    # 11. Volume shockers
+    print("Finding volume shockers...")
+    volume_shockers = get_volume_shockers()
+    print(f"Volume shockers: {len(volume_shockers)}")
+
+    # 12. News
+    print("Fetching news...")
+    news = get_news_from_api()
+    print(f"News articles: {len(news)}")
+
+    # Write all data
     scan_data = {
         "timestamp": datetime.utcnow().isoformat(),
         "sectors_analyzed": len(sectors),
@@ -336,37 +621,47 @@ def main():
         "top_sectors": sectors[:5],
         "signals": signals,
         "market_overview": overview,
+        "global_markets": global_markets,
+        "commodities": commodities,
+        "crypto": crypto,
+        "currencies": currencies,
+        "fii_dii": fii_dii,
+        "market_breadth": breadth,
+        "volume_shockers": volume_shockers,
         "news": news,
     }
 
     with open(os.path.join(DATA_DIR, "scan.json"), "w") as f:
         json.dump(scan_data, f, indent=2)
-
     with open(os.path.join(DATA_DIR, "sectors.json"), "w") as f:
         json.dump({"sectors": sectors}, f, indent=2)
-
     with open(os.path.join(DATA_DIR, "signals.json"), "w") as f:
         json.dump({"signals": signals}, f, indent=2)
-
     with open(os.path.join(DATA_DIR, "overview.json"), "w") as f:
         json.dump(overview, f, indent=2)
-
     with open(os.path.join(DATA_DIR, "news.json"), "w") as f:
         json.dump({"news": news}, f, indent=2)
+    with open(os.path.join(DATA_DIR, "global.json"), "w") as f:
+        json.dump({"global_markets": global_markets, "commodities": commodities, "crypto": crypto, "currencies": currencies}, f, indent=2)
+    with open(os.path.join(DATA_DIR, "breadth.json"), "w") as f:
+        json.dump(breadth, f, indent=2)
+    with open(os.path.join(DATA_DIR, "shockers.json"), "w") as f:
+        json.dump({"volume_shockers": volume_shockers}, f, indent=2)
+    with open(os.path.join(DATA_DIR, "fii_dii.json"), "w") as f:
+        json.dump(fii_dii, f, indent=2)
 
-    # 7. Print summary
-    print(f"\n{'='*50}")
+    print(f"\n{'='*60}")
     print(f"SCAN COMPLETE: {datetime.utcnow().isoformat()}")
     print(f"Sectors: {len(sectors)} | Stocks: {scanned} | Signals: {len(signals)}")
+    print(f"Global: {len(global_markets)} | Commodities: {len(commodities)} | Crypto: {len(crypto)}")
+    print(f"News: {len(news)} | Volume Shockers: {len(volume_shockers)}")
     if sectors:
         print(f"\nTop Sectors:")
-        for s in sectors[:3]:
-            print(f"  #{s['score']} {s['name']}: {s['change_pct']}%")
+        for s in sectors[:3]: print(f"  #{s['score']} {s['name']}: {s['change_pct']}%")
     if signals:
         print(f"\nTop Signals:")
-        for sig in signals[:5]:
-            print(f"  {sig['stock']}: {sig['signal']} conf={sig['confidence']} R:R={sig['risk_reward']}")
-    print(f"{'='*50}")
+        for sig in signals[:5]: print(f"  {sig['stock']}: conf={sig['confidence']} R:R={sig['risk_reward']}")
+    print(f"{'='*60}")
 
 
 if __name__ == "__main__":

@@ -60,19 +60,23 @@ let currentTheme = 'dark';
 
 // ==================== DATA HOOK ====================
 function useMarketData() {
-  const [data, setData] = useState({ sectors: [], signals: [], overview: {}, news: [], scan: null });
+  const [data, setData] = useState({ sectors: [], signals: [], overview: {}, news: [], scan: null, global: [], commodities: [], crypto: [], currencies: [], fiiDii: {}, breadth: {}, shockers: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastFetch, setLastFetch] = useState(null);
 
   const fetchAll = useCallback(async () => {
     try {
-      const [scanRes, sectorsRes, signalsRes, overviewRes, newsRes] = await Promise.all([
+      const [scanRes, sectorsRes, signalsRes, overviewRes, newsRes, globalRes, breadthRes, shockersRes, fiiRes] = await Promise.all([
         fetch(`${DATA_BASE}/data/scan.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
         fetch(`${DATA_BASE}/data/sectors.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
         fetch(`${DATA_BASE}/data/signals.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
         fetch(`${DATA_BASE}/data/overview.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
         fetch(`${DATA_BASE}/data/news.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/global.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/breadth.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/shockers.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
+        fetch(`${DATA_BASE}/data/fii_dii.json?t=${Date.now()}`).then(r => r.ok ? r.json() : null),
       ]);
       setData({
         sectors: sectorsRes?.sectors || [],
@@ -80,6 +84,13 @@ function useMarketData() {
         overview: overviewRes || {},
         news: newsRes?.news || [],
         scan: scanRes,
+        global: globalRes?.global_markets || [],
+        commodities: globalRes?.commodities || [],
+        crypto: globalRes?.crypto || [],
+        currencies: globalRes?.currencies || [],
+        fiiDii: fiiRes || {},
+        breadth: breadthRes || {},
+        shockers: shockersRes?.volume_shockers || [],
       });
       setLastFetch(new Date());
       setError(null);
@@ -188,11 +199,15 @@ export default function App() {
     { id: 'heatmap', label: 'Heatmap', icon: LayoutGrid, shortcut: '2' },
     { id: 'signals', label: 'Signals', icon: Zap, shortcut: '3' },
     { id: 'charts', label: 'Charts', icon: BarChart3, shortcut: '4' },
-    { id: 'watchlist', label: 'Watchlist', icon: Star, shortcut: '5' },
-    { id: 'portfolio', label: 'Portfolio', icon: PieChart, shortcut: '6' },
-    { id: 'journal', label: 'Journal', icon: FileText, shortcut: '7' },
-    { id: 'news', label: 'News', icon: Newspaper, shortcut: '8' },
-    { id: 'calculator', label: 'Risk Calc', icon: Calculator, shortcut: '9' },
+    { id: 'global', label: 'Global', icon: Globe, shortcut: '5' },
+    { id: 'commodities', label: 'Commodities', icon: DollarSign, shortcut: '6' },
+    { id: 'watchlist', label: 'Watchlist', icon: Star, shortcut: '7' },
+    { id: 'portfolio', label: 'Portfolio', icon: PieChart, shortcut: '8' },
+    { id: 'breadth', label: 'Breadth', icon: BarChart2, shortcut: '9' },
+    { id: 'shockers', label: 'Shockers', icon: Zap, shortcut: '0' },
+    { id: 'journal', label: 'Journal', icon: FileText },
+    { id: 'news', label: 'News', icon: Newspaper },
+    { id: 'calculator', label: 'Risk Calc', icon: CalculatorIcon },
   ];
 
   // Keyboard shortcuts
@@ -237,8 +252,12 @@ export default function App() {
             {activeView === 'heatmap' && <HeatmapView sectors={market.sectors} stocks={market.signals} T={T} />}
             {activeView === 'signals' && <SignalsView signals={market.signals} T={T} onSignalClick={setSelectedSignal} onWatch={watchSignal} onPortfolio={addToPortfolio} onJournal={addJournalEntry} />}
             {activeView === 'charts' && <ChartsView signals={market.signals} T={T} />}
+            {activeView === 'global' && <GlobalView global={market.global} currencies={market.currencies} T={T} />}
+            {activeView === 'commodities' && <CommoditiesView commodities={market.commodities} crypto={market.crypto} T={T} />}
             {activeView === 'watchlist' && <WatchlistView watchlist={watchlist} setWatchlist={setWatchlist} signals={market.signals} T={T} onSignalClick={setSelectedSignal} onPortfolio={addToPortfolio} />}
             {activeView === 'portfolio' && <PortfolioView portfolio={portfolio} setPortfolio={setPortfolio} signals={market.signals} T={T} />}
+            {activeView === 'breadth' && <BreadthView breadth={market.breadth} fiiDii={market.fiiDii} sectors={market.sectors} T={T} />}
+            {activeView === 'shockers' && <ShockersView shockers={market.shockers} T={T} onSignalClick={setSelectedSignal} />}
             {activeView === 'journal' && <JournalView journal={journal} setJournal={setJournal} T={T} />}
             {activeView === 'news' && <NewsView news={market.news} T={T} />}
             {activeView === 'calculator' && <RiskCalculatorView T={T} />}
@@ -936,36 +955,6 @@ function JournalView({ journal, setJournal, T }) {
   );
 }
 
-// ==================== NEWS VIEW ====================
-function NewsView({ news, T }) {
-  return (
-    <div className="fade-in">
-      {news.length === 0 ? <EmptyState icon={Newspaper} text="No news available." T={T} /> :
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-          {news.map((n, i) => (
-            <a key={i} href={n.url} target="_blank" rel="noopener noreferrer" style={{
-              background: T.bg3, borderRadius: 10, border: `1px solid ${T.border}`, padding: 16,
-              textDecoration: 'none', color: 'inherit', transition: 'all 0.15s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)'; }}
-              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 9, fontWeight: 600,
-                  background: n.sentiment === 'positive' ? `${T.green}15` : n.sentiment === 'negative' ? `${T.red}15` : `${T.text3}15`,
-                  color: n.sentiment === 'positive' ? T.green : n.sentiment === 'negative' ? T.red : T.text3,
-                }}>{n.sentiment}</span>
-                <span style={{ fontSize: 9, color: T.text3 }}>{n.source}</span>
-              </div>
-              <h4 style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, marginBottom: 6 }}>{n.title}</h4>
-              <div style={{ fontSize: 9, color: T.text3 }}>{n.published_at ? new Date(n.published_at).toLocaleDateString() : ''}</div>
-            </a>
-          ))}
-        </div>
-      }
-    </div>
-  );
-}
-
 // ==================== RISK CALCULATOR VIEW ====================
 function RiskCalculatorView({ T }) {
   const [capital, setCapital] = useState(100000);
@@ -1155,6 +1144,289 @@ function ToastContainer({ toasts, T }) {
   );
 }
 
+// ==================== NEW VIEWS ====================
+
+// ==================== GLOBAL MARKETS VIEW ====================
+function GlobalView({ global, currencies, T }) {
+  const regions = {
+    'US Markets': global.filter(g => ['S&P 500', 'NASDAQ', 'DOW'].includes(g.name)),
+    'Europe': global.filter(g => ['FTSE', 'DAX', 'CAC'].includes(g.name)),
+    'Asia Pacific': global.filter(g => ['NIKKEI', 'HANG SENG', 'SHANGHAI', 'KOSPI', 'STI', 'ASX 200'].includes(g.name)),
+  };
+
+  return (
+    <div className="fade-in">
+      <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Global Markets</h2>
+      {Object.entries(regions).map(([region, markets]) => (
+        <div key={region} style={{ marginBottom: 20 }}>
+          <h3 style={{ fontSize: 12, fontWeight: 600, color: T.text3, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{region}</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+            {markets.map((m, i) => (
+              <div key={i} style={{ padding: 14, borderRadius: 8, background: T.bg3, border: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>{m.name}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'JetBrains Mono', monospace", marginBottom: 4 }}>{m.price?.toLocaleString()}</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: m.change >= 0 ? T.green : T.red, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {m.change >= 0 ? '+' : ''}{m.change}%
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {/* Currencies */}
+      {currencies.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <h3 style={{ fontSize: 12, fontWeight: 600, color: T.text3, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Currency Pairs</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+            {currencies.map((c, i) => (
+              <div key={i} style={{ padding: 12, borderRadius: 8, background: T.bg3, border: `1px solid ${T.border}` }}>
+                <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{c.name}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>{c.price}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: c.change >= 0 ? T.green : T.red }}>{c.change >= 0 ? '+' : ''}{c.change}%</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ==================== COMMODITIES VIEW ====================
+function CommoditiesView({ commodities, crypto, T }) {
+  return (
+    <div className="fade-in">
+      <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Commodities & Crypto</h2>
+
+      {/* Commodities */}
+      <div style={{ marginBottom: 24 }}>
+        <h3 style={{ fontSize: 12, fontWeight: 600, color: T.text3, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Commodities</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+          {commodities.map((c, i) => (
+            <div key={i} style={{ padding: 14, borderRadius: 8, background: T.bg3, border: `1px solid ${T.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{c.name}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", marginBottom: 4 }}>
+                {c.price > 100 ? c.price.toLocaleString() : c.price}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: c.change >= 0 ? T.green : T.red }}>
+                {c.change >= 0 ? '▲' : '▼'} {Math.abs(c.change).toFixed(2)}%
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Crypto */}
+      <div>
+        <h3 style={{ fontSize: 12, fontWeight: 600, color: T.text3, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cryptocurrency</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
+          {crypto.map((c, i) => (
+            <div key={i} style={{ padding: 14, borderRadius: 8, background: T.bg3, border: `1px solid ${T.border}` }}>
+              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4 }}>{c.name}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace", marginBottom: 4 }}>
+                ${c.price > 100 ? c.price.toLocaleString() : c.price}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: c.change >= 0 ? T.green : T.red }}>
+                {c.change >= 0 ? '▲' : '▼'} {Math.abs(c.change).toFixed(2)}%
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==================== MARKET BREADTH VIEW ====================
+function BreadthView({ breadth, fiiDii, sectors, T }) {
+  const total = breadth.advance + breadth.decline + breadth.unchanged;
+  const advPct = total > 0 ? ((breadth.advance / total) * 100).toFixed(1) : 0;
+  const decPct = total > 0 ? ((breadth.decline / total) * 100).toFixed(1) : 0;
+
+  return (
+    <div className="fade-in">
+      <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Market Breadth & Institutional Flows</h2>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        {/* Advance/Decline */}
+        <Panel title="Advance / Decline" icon={BarChart2} color={T.cyan} T={T}>
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ fontSize: 13, color: T.green, fontWeight: 700 }}>▲ {breadth.advance || 0}</span>
+              <span style={{ fontSize: 13, color: T.text3 }}>Total: {total || '-'}</span>
+              <span style={{ fontSize: 13, color: T.red, fontWeight: 700 }}>▼ {breadth.decline || 0}</span>
+            </div>
+            <div style={{ height: 24, borderRadius: 12, overflow: 'hidden', display: 'flex', background: T.bg4 }}>
+              <div style={{ width: `${advPct}%`, background: T.green, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>{advPct}%</div>
+              <div style={{ width: `${decPct}%`, background: T.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: 'white' }}>{decPct}%</div>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ padding: 10, borderRadius: 8, background: T.bg4, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: T.text3, marginBottom: 4 }}>52W Highs</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.green }}>{breadth.new_highs || 0}</div>
+            </div>
+            <div style={{ padding: 10, borderRadius: 8, background: T.bg4, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, color: T.text3, marginBottom: 4 }}>52W Lows</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: T.red }}>{breadth.new_lows || 0}</div>
+            </div>
+          </div>
+        </Panel>
+
+        {/* FII/DII */}
+        <Panel title="FII / DII Flows" icon={Users} color={T.purple} T={T}>
+          {Object.keys(fiiDii).length === 0 ? <EmptyState icon={Users} text="FII/DII data unavailable" T={T} /> :
+            <div>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, color: T.text3, marginBottom: 6, fontWeight: 600 }}>FOREIGN INSTITUTIONAL INVESTORS</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <div style={{ padding: 8, borderRadius: 6, background: T.bg4, textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, color: T.text3 }}>Buy</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.green }}>₹{fiiDii.fii_buy}Cr</div>
+                  </div>
+                  <div style={{ padding: 8, borderRadius: 6, background: T.bg4, textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, color: T.text3 }}>Sell</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.red }}>₹{fiiDii.fii_sell}Cr</div>
+                  </div>
+                  <div style={{ padding: 8, borderRadius: 6, background: T.bg4, textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, color: T.text3 }}>Net</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: fiiDii.fii_net >= 0 ? T.green : T.red }}>₹{fiiDii.fii_net}Cr</div>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: T.text3, marginBottom: 6, fontWeight: 600 }}>DOMESTIC INSTITUTIONAL INVESTORS</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                  <div style={{ padding: 8, borderRadius: 6, background: T.bg4, textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, color: T.text3 }}>Buy</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.green }}>₹{fiiDii.dii_buy}Cr</div>
+                  </div>
+                  <div style={{ padding: 8, borderRadius: 6, background: T.bg4, textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, color: T.text3 }}>Sell</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: T.red }}>₹{fiiDii.dii_sell}Cr</div>
+                  </div>
+                  <div style={{ padding: 8, borderRadius: 6, background: T.bg4, textAlign: 'center' }}>
+                    <div style={{ fontSize: 9, color: T.text3 }}>Net</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: fiiDii.dii_net >= 0 ? T.green : T.red }}>₹{fiiDii.dii_net}Cr</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          }
+        </Panel>
+      </div>
+
+      {/* Sector Rotation */}
+      <Panel title="Sector Rotation" icon={TrendingUp} color={T.accent} T={T}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+          {sectors.map((s, i) => (
+            <div key={i} style={{ padding: 12, borderRadius: 8, background: s.change_pct >= 0 ? `${T.green}08` : `${T.red}08`, border: `1px solid ${s.change_pct >= 0 ? T.green : T.red}20`, textAlign: 'center' }}>
+              <div style={{ fontSize: 10, fontWeight: 600, marginBottom: 4 }}>{s.name.replace('NIFTY ', '')}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: s.change_pct >= 0 ? T.green : T.red, fontFamily: "'JetBrains Mono', monospace" }}>
+                {s.change_pct >= 0 ? '+' : ''}{s.change_pct}%
+              </div>
+              <div style={{ fontSize: 9, color: T.text3, marginTop: 2 }}>Score: {s.score}/10</div>
+            </div>
+          ))}
+        </div>
+      </Panel>
+    </div>
+  );
+}
+
+// ==================== VOLUME SHOCKERS VIEW ====================
+function ShockersView({ shockers, T, onSignalClick }) {
+  return (
+    <div className="fade-in">
+      <h2 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>Volume Shockers</h2>
+      <p style={{ fontSize: 11, color: T.text3, marginBottom: 16 }}>Stocks with unusual volume expansion (>2x average)</p>
+
+      {shockers.length === 0 ? <EmptyState icon={Zap} text="No volume shockers detected." T={T} /> :
+        <div style={{ display: 'grid', gap: 8 }}>
+          {shockers.map((s, i) => (
+            <div key={i} onClick={() => onSignalClick(s)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderRadius: 8, background: T.bg3, border: `1px solid ${T.border}`, cursor: 'pointer', transition: 'all 0.15s' }}
+              onMouseEnter={e => { e.currentTarget.style.background = T.bg4; }} onMouseLeave={e => { e.currentTarget.style.background = T.bg3; }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 8, background: `${T.orange}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Zap size={18} color={T.orange} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>{s.name}</div>
+                  <div style={{ fontSize: 10, color: T.text3 }}>Vol: {s.volume.toLocaleString()} (Avg: {s.avg_volume.toLocaleString()})</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>₹{s.price}</div>
+                  <div style={{ fontSize: 11, color: s.change_pct >= 0 ? T.green : T.red, fontWeight: 600 }}>{s.change_pct >= 0 ? '+' : ''}{s.change_pct}%</div>
+                </div>
+                <div style={{ padding: '4px 10px', borderRadius: 6, background: `${T.orange}15`, border: `1px solid ${T.orange}30` }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: T.orange, fontFamily: "'JetBrains Mono', monospace" }}>{s.volume_ratio}x</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      }
+    </div>
+  );
+}
+
+// ==================== ENHANCED NEWS VIEW ====================
+function NewsView({ news, T }) {
+  const [filter, setFilter] = useState('all');
+  const categories = ['all', ...new Set(news.map(n => n.category).filter(Boolean))];
+  const filtered = filter === 'all' ? news : news.filter(n => n.category === filter);
+
+  return (
+    <div className="fade-in">
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+        {categories.map(c => (
+          <button key={c} onClick={() => setFilter(c)} style={{
+            padding: '6px 12px', borderRadius: 6, border: `1px solid ${filter === c ? T.accent : T.border}`,
+            background: filter === c ? `${T.accent}15` : 'transparent',
+            color: filter === c ? T.accent : T.text2, cursor: 'pointer', fontSize: 11, fontWeight: 600,
+            textTransform: 'capitalize',
+          }}>{c}</button>
+        ))}
+      </div>
+
+      {filtered.length === 0 ? <EmptyState icon={Newspaper} text="No news available." T={T} /> :
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+          {filtered.map((n, i) => (
+            <a key={i} href={n.url} target="_blank" rel="noopener noreferrer" style={{
+              background: T.bg3, borderRadius: 10, border: `1px solid ${T.border}`, overflow: 'hidden',
+              textDecoration: 'none', color: 'inherit', transition: 'all 0.15s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)'; }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}>
+              {n.image && (
+                <div style={{ height: 140, overflow: 'hidden' }}>
+                  <img src={n.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />
+                </div>
+              )}
+              <div style={{ padding: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                  <span style={{ padding: '2px 6px', borderRadius: 3, fontSize: 9, fontWeight: 600,
+                    background: n.sentiment === 'positive' ? `${T.green}15` : n.sentiment === 'negative' ? `${T.red}15` : `${T.text3}15`,
+                    color: n.sentiment === 'positive' ? T.green : n.sentiment === 'negative' ? T.red : T.text3,
+                  }}>{n.sentiment}</span>
+                  <span style={{ fontSize: 9, color: T.text3 }}>{n.source}</span>
+                  {n.category && <span style={{ fontSize: 9, color: T.text3, padding: '1px 4px', borderRadius: 2, background: T.bg4 }}>{n.category}</span>}
+                </div>
+                <h4 style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.4, marginBottom: 6 }}>{n.title}</h4>
+                {n.description && <p style={{ fontSize: 11, color: T.text2, lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', marginBottom: 6 }}>{n.description}</p>}
+                <div style={{ fontSize: 9, color: T.text3 }}>{n.published_at ? new Date(n.published_at).toLocaleString() : ''}</div>
+              </div>
+            </a>
+          ))}
+        </div>
+      }
+    </div>
+  );
+}
+
 // ==================== REUSABLE COMPONENTS ====================
 function Panel({ title, icon: Icon, color, T, children }) {
   return (
@@ -1217,3 +1489,6 @@ function EmptyState({ icon: Icon, text, T }) {
 function CalculatorIcon({ T }) {
   return <span style={{ color: T.accent }}>🧮</span>;
 }
+
+// Fix: Calculator icon for views array
+const Calculator = CalculatorIcon;
